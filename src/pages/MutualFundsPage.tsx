@@ -14,109 +14,116 @@ const MutualFundsPage: React.FC = () => {
   const xirr = 37.67;
 
   return (
-    <div className="min-h-screen bg-background pb-16">
-      <TopHeader title="Mutual Funds" />
-
-      {/* Tabs */}
-      <div className="flex gap-2 overflow-x-auto px-4 py-3 scrollbar-hide">
-        {tabs.map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              activeTab === tab
-                ? 'bg-foreground text-background'
-                : 'border border-border bg-card text-foreground'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+    <div className="min-h-screen bg-background pb-16 lg:pb-0">
+      <div className="lg:hidden">
+        <TopHeader title="Mutual Funds" />
+      </div>
+      <div className="hidden lg:block border-b border-border bg-card px-8 py-5">
+        <h1 className="text-2xl font-bold text-foreground">Mutual Funds</h1>
       </div>
 
-      {activeTab === 'Dashboard' && (
-        <div className="px-4">
-          <h2 className="mb-3 text-base font-semibold text-foreground">Investments ({mutualFunds.length})</h2>
-          
-          {/* Summary Card */}
-          <div className="mb-4 rounded-xl border border-border bg-card p-4">
-            <div className="mb-3 flex justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">Current</p>
-                <p className="text-lg font-bold text-foreground">₹{totalCurrent.toLocaleString('en-IN')}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground">Total Returns</p>
-                <p className="text-lg font-bold text-profit">
-                  + ₹{totalReturns.toLocaleString('en-IN')} ({totalReturnsPercent.toFixed(2)}%)
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-between border-t border-border pt-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Invested</p>
-                <p className="text-sm font-semibold text-foreground">₹{totalInvested.toLocaleString('en-IN')}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground">1D Returns</p>
-                <p className="text-sm font-semibold text-profit">+ ₹689.07(0.32%)</p>
-              </div>
-            </div>
-            <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">XIRR {xirr}%</span>
-              <button className="flex items-center gap-1 text-xs font-medium text-primary">
-                📊 Portfolio analysis
-              </button>
-            </div>
-          </div>
+      <div className="lg:px-8 lg:py-6">
+        {/* Tabs */}
+        <div className="flex gap-2 overflow-x-auto px-4 py-3 lg:px-0 scrollbar-hide">
+          {tabs.map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                activeTab === tab
+                  ? 'bg-foreground text-background'
+                  : 'border border-border bg-card text-foreground hover:bg-muted'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
 
-          {/* Sort */}
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Sort</span>
-              <span>☰</span>
-            </div>
-            <span className="text-xs text-muted-foreground">‹ › Current (Invested)</span>
-          </div>
-
-          {/* Fund List */}
-          <div className="space-y-1">
-            {mutualFunds.map(fund => (
-              <div key={fund.id} className="flex items-center justify-between border-b border-border py-4">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground leading-tight">{fund.name}</p>
-                  <p className="text-xs text-muted-foreground">{fund.type}</p>
+        {activeTab === 'Dashboard' && (
+          <div className="px-4 lg:px-0">
+            <h2 className="mb-3 text-base font-semibold text-foreground lg:text-lg">Investments ({mutualFunds.length})</h2>
+            
+            {/* Summary Card */}
+            <div className="mb-4 rounded-xl border border-border bg-card p-4 lg:p-6 lg:max-w-2xl">
+              <div className="mb-3 flex justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground lg:text-sm">Current</p>
+                  <p className="text-lg font-bold text-foreground lg:text-xl">₹{totalCurrent.toLocaleString('en-IN')}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-semibold text-foreground">₹{fund.currentValue.toLocaleString('en-IN')}</p>
-                  <p className="text-xs text-muted-foreground">({fund.investedValue.toLocaleString('en-IN')})</p>
+                  <p className="text-xs text-muted-foreground lg:text-sm">Total Returns</p>
+                  <p className="text-lg font-bold text-profit lg:text-xl">
+                    + ₹{totalReturns.toLocaleString('en-IN')} ({totalReturnsPercent.toFixed(2)}%)
+                  </p>
                 </div>
               </div>
-            ))}
+              <div className="flex justify-between border-t border-border pt-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Invested</p>
+                  <p className="text-sm font-semibold text-foreground">₹{totalInvested.toLocaleString('en-IN')}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">1D Returns</p>
+                  <p className="text-sm font-semibold text-profit">+ ₹689.07(0.32%)</p>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">XIRR {xirr}%</span>
+                <button className="flex items-center gap-1 text-xs font-medium text-primary">
+                  📊 Portfolio analysis
+                </button>
+              </div>
+            </div>
+
+            {/* Sort */}
+            <div className="mb-3 flex items-center justify-between lg:max-w-2xl">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Sort</span>
+                <span>☰</span>
+              </div>
+              <span className="text-xs text-muted-foreground">‹ › Current (Invested)</span>
+            </div>
+
+            {/* Fund List */}
+            <div className="space-y-1 lg:max-w-2xl">
+              {mutualFunds.map(fund => (
+                <div key={fund.id} className="flex items-center justify-between border-b border-border py-4 hover:bg-muted/50 transition-colors rounded px-2 -mx-2 cursor-pointer">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-foreground leading-tight">{fund.name}</p>
+                    <p className="text-xs text-muted-foreground">{fund.type}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-foreground">₹{fund.currentValue.toLocaleString('en-IN')}</p>
+                    <p className="text-xs text-muted-foreground">({fund.investedValue.toLocaleString('en-IN')})</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {activeTab === 'Explore' && (
-        <div className="px-4 py-4">
-          <h2 className="mb-4 text-base font-semibold text-foreground">Popular Funds</h2>
-          <p className="text-sm text-muted-foreground">Explore mutual funds coming soon...</p>
-        </div>
-      )}
+        {activeTab === 'Explore' && (
+          <div className="px-4 py-4 lg:px-0">
+            <h2 className="mb-4 text-base font-semibold text-foreground">Popular Funds</h2>
+            <p className="text-sm text-muted-foreground">Explore mutual funds coming soon...</p>
+          </div>
+        )}
 
-      {activeTab === 'SIPs' && (
-        <div className="px-4 py-4">
-          <h2 className="mb-4 text-base font-semibold text-foreground">Your SIPs</h2>
-          <p className="text-sm text-muted-foreground">SIP management coming soon...</p>
-        </div>
-      )}
+        {activeTab === 'SIPs' && (
+          <div className="px-4 py-4 lg:px-0">
+            <h2 className="mb-4 text-base font-semibold text-foreground">Your SIPs</h2>
+            <p className="text-sm text-muted-foreground">SIP management coming soon...</p>
+          </div>
+        )}
 
-      {activeTab === 'Watchlist' && (
-        <div className="px-4 py-4">
-          <h2 className="mb-4 text-base font-semibold text-foreground">Watchlist</h2>
-          <p className="text-sm text-muted-foreground">Your watchlist is empty.</p>
-        </div>
-      )}
+        {activeTab === 'Watchlist' && (
+          <div className="px-4 py-4 lg:px-0">
+            <h2 className="mb-4 text-base font-semibold text-foreground">Watchlist</h2>
+            <p className="text-sm text-muted-foreground">Your watchlist is empty.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
