@@ -12,15 +12,14 @@ const BottomNav: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Don't show on stock detail pages
-  if (location.pathname.startsWith('/stock/')) return null;
+  // Don't show on stock detail, login, splash pages
+  if (location.pathname.startsWith('/stock/') || location.pathname === '/login' || location.pathname === '/') return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card lg:hidden">
       <div className="mx-auto flex max-w-lg items-center justify-around">
         {tabs.map(tab => {
-          const isActive = location.pathname === tab.path || 
-            (tab.path === '/stocks' && location.pathname === '/');
+          const isActive = location.pathname === tab.path;
           return (
             <button
               key={tab.path}
