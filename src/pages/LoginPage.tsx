@@ -1,86 +1,103 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GrowwLogo from '@/components/GrowwLogo';
+import { useAuth } from '@/hooks/useAuth';
+import { toast } from 'sonner';
 
 const LoginPage: React.FC = () => {
-  const [pin, setPin] = useState('');
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+  const { login, signup } = useAuth();
 
-  const handleNumber = (num: string) => {
-    if (pin.length < 4) {
-      const newPin = pin + num;
-      setPin(newPin);
-      if (newPin.length === 4) {
-        setTimeout(() => navigate('/stocks'), 300);
-      }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSubmitting(true);
+    const result =
+      mode === 'login'
+        ? await login({ email, password })
+        : await signup({ name, email, password });
+    setSubmitting(false);
+    if (!result.ok) {
+      setError(result.message || 'Authentication failed');
+      return;
     }
+    if (mode === 'signup') {
+      setMode('login');
+      setName('');
+      setPassword('');
+      toast.success('Registration successful. Please login.');
+      return;
+    }
+    navigate('/stocks');
   };
-
-  const handleDelete = () => setPin(p => p.slice(0, -1));
-
-  const numpad = [
-    ['1', '2', '3'],
-    ['4', '5', '6'],
-    ['7', '8', '9'],
-    ['•', '0', '⌫'],
-  ];
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {/* Top section */}
-      <div className="flex flex-1 flex-col items-center justify-center px-6 pt-8">
-        <div className="mb-4 flex w-full items-center justify-between">
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6">
+        <div className="mb-6 flex items-center justify-between">
           <GrowwLogo size={32} />
-          <div className="h-8 w-8 overflow-hidden rounded-full bg-muted">
-            <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-muted-foreground">U</div>
-          </div>
+          <span className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">Paper Trading</span>
         </div>
 
-        <h1 className="mb-1 text-center text-lg font-semibold text-foreground">Hi, Paper Trader</h1>
-        <p className="mb-6 text-center text-sm text-muted-foreground">Enter your Groww PIN</p>
+        <h1 className="mb-1 text-2xl font-semibold text-foreground">
+          {mode === 'login' ? 'Welcome back' : 'Create account'}
+        </h1>
+        <p className="mb-6 text-sm text-muted-foreground">
+          {mode === 'login'
+            ? 'Login to continue paper trading'
+            : 'Get ₹1,00,00,000 virtual balance on signup'}
+        </p>
 
-        {/* PIN display */}
-        <div className="mb-6 flex gap-3">
-          {[0, 1, 2, 3].map(i => (
-            <div
-              key={i}
-              className={`flex h-12 w-12 items-center justify-center rounded-lg border-2 text-xl font-bold transition-colors ${
-                pin.length > i
-                  ? 'border-primary bg-primary/10 text-foreground'
-                  : 'border-border text-transparent'
-              }`}
-            >
-              {pin.length > i ? '•' : ''}
-            </div>
-          ))}
-        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {mode === 'signup' && (
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Full name"
+              className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground"
+              required
+            />
+          )}
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email"
+            type="email"
+            className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground"
+            required
+          />
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            type="password"
+            className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground"
+            required
+          />
 
-        <button className="text-sm font-medium text-primary">Use fingerprint</button>
-      </div>
+          {error && <p className="text-sm text-loss">{error}</p>}
 
-      {/* Numpad */}
-      <div className="px-6 pb-8">
-        {numpad.map((row, ri) => (
-          <div key={ri} className="flex justify-around py-3">
-            {row.map(key => (
-              <button
-                key={key}
-                onClick={() => {
-                  if (key === '⌫') handleDelete();
-                  else if (key === '•') { /* do nothing */ }
-                  else handleNumber(key);
-                }}
-                className={`flex h-14 w-14 items-center justify-center rounded-full text-xl font-medium transition-colors ${
-                  key === '•'
-                    ? 'text-transparent'
-                    : 'text-foreground active:bg-muted'
-                }`}
-              >
-                {key}
-              </button>
-            ))}
-          </div>
-        ))}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="h-11 w-full rounded-lg bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-70"
+          >
+            {submitting ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create account'}
+          </button>
+        </form>
+
+        <button
+          onClick={() => setMode((m) => (m === 'login' ? 'signup' : 'login'))}
+          className="mt-4 text-sm text-primary"
+        >
+          {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Login'}
+        </button>
       </div>
     </div>
   );

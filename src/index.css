@@ -1,31 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@font-face {
+  font-family: 'GrowwSans';
+  src: url('./assets/fonts/GrowSans.woff') format('woff'),
+       url('./assets/fonts/GrowSans.otf') format('opentype'),
+       url('./assets/fonts/GrowSans.ttf') format('truetype');
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+}
 
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 0 0% 13%;
+    --foreground: 232 14% 31%;
 
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 13%;
+    --card-foreground: 232 14% 31%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 13%;
+    --popover-foreground: 232 14% 31%;
 
     --primary: 164 100% 41%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 13%;
+    --secondary-foreground: 232 14% 31%;
 
     --muted: 0 0% 96%;
     --muted-foreground: 0 0% 45%;
 
     --accent: 0 0% 96%;
-    --accent-foreground: 0 0% 13%;
+    --accent-foreground: 232 14% 31%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
@@ -33,8 +43,8 @@
     --success: 164 100% 41%;
     --success-foreground: 0 0% 100%;
 
-    --profit: 145 63% 42%;
-    --loss: 0 72% 51%;
+    --profit: 168 96% 36%;
+    --loss: 11 84% 57%;
 
     --border: 0 0% 90%;
     --input: 0 0% 90%;
@@ -47,7 +57,7 @@
     --sidebar-primary: 164 100% 41%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-accent-foreground: 232 14% 31%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 164 100% 41%;
 
@@ -55,10 +65,10 @@
   }
 
   .dark {
-    --background: 220 13% 10%;
+    --background: 0 0% 7%;
     --foreground: 0 0% 95%;
 
-    --card: 220 13% 14%;
+    --card: 0 0% 7%;
     --card-foreground: 0 0% 95%;
 
     --popover: 220 13% 14%;
@@ -82,8 +92,8 @@
     --success: 164 100% 41%;
     --success-foreground: 0 0% 100%;
 
-    --profit: 145 63% 49%;
-    --loss: 0 72% 58%;
+    --profit: 168 96% 36%;
+    --loss: 11 84% 57%;
 
     --border: 220 13% 22%;
     --input: 220 13% 22%;
@@ -127,5 +137,23 @@
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Thin, attractive scrollbar for option chains / modals */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(68, 71, 91, 0.55) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: rgba(68, 71, 91, 0.55);
+    border-radius: 9999px;
+    border: 1px solid rgba(68, 71, 91, 0.15);
   }
 }

@@ -1,0 +1,284 @@
+import React, { useCallback, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  additionalSearchStocks,
+  etfStocks,
+  holdingsData,
+  marketIndices,
+  popularStocks,
+} from "@/data/mockData";
+import type { PaperPosition } from "@/hooks/usePaperPositions";
+import { usePositionMktPrices } from "@/hooks/usePositionMktPrices";
+import { ListFilter, LineChart, SquareArrowUpRight, LayoutList } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { PAPER_POSITIONS_REFRESH_EVENT } from "@/hooks/usePaperTrading";
+import { toast } from "sonner";
+
+const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
+
+function normSym(x: string): string {
+  return x.replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+/** Map equity symbol or index name (e.g. NIFTY 50) to `/stock/:id` route id. */
+function resolveStockIdFromPosition(p: PaperPosition): string | null {
+  const sym = normSym(p.symbol);
+  const lists = [...popularStocks, ...holdingsData, ...etfStocks, ...additionalSearchStocks];
+  const eq = lists.find((s) => normSym(s.symbol) === sym);
+  if (eq) return eq.id;
+  const idx = marketIndices.find((i) => normSym(i.name) === sym);
+  if (idx) return idx.name;
+  return null;
+}
+
+function formatPositionTitle(p: PaperPosition): string {
+  if (p.instrumentType === "FO" && p.expiry && p.strike != null && p.optionType) {
+    const d = new Date(`${p.expiry}T00:00:00Z`);
+    const day = d.getUTCDate();
+    const mon = d.toLocaleString("en-IN", { month: "short", timeZone: "UTC" });
+    const opt = p.optionType === "CE" ? "Call" : "Put";
+    return `${p.symbol} ${day} ${mon} ${p.strike} ${opt}`;
+  }
+  return p.symbol;
+}
+
+function productLine(p: PaperPosition): string {
+  return "Delivery · NSE";
+}
+
+function formatPnl(n: number): string {
+  const s = `${n >= 0 ? "+" : ""}₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return s;
+}
+
+type Props = {
+  positions: PaperPosition[];
+  loading: boolean;
+  className?: string;
+  /** Tighter paddings / toolbar for mobile */
+  compact?: boolean;
+};
+
+const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compact }) => {
+  const navigate = useNavigate();
+  const { token, refreshMe, user } = useAuth();
+  const [exitingKey, setExitingKey] = useState<string | null>(null);
+  const { mktByInstrumentKey } = usePositionMktPrices(positions);
+
+  const realizedPnl = Number(user?.realizedPnlInr ?? 0);
+
+  const rows = useMemo(() => {
+    return positions.map((p) => {
+      const mkt = mktByInstrumentKey[p.instrumentKey] ?? p.avgPrice;
+      const pnl = p.exited ? Number(p.realizedPnlInr ?? 0) : (mkt - p.avgPrice) * p.quantity;
+      return { p, mkt, pnl };
+    });
+  }, [positions, mktByInstrumentKey]);
+
+  const openPnl = useMemo(
+    () => rows.filter((r) => !r.p.exited).reduce((s, r) => s + r.pnl, 0),
+    [rows],
+  );
+  const totalPnl = realizedPnl + openPnl;
+
+  const exitPosition = useCallback(
+    async (e: React.MouseEvent, instrumentKey: string, exitPrice: number) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!token) {
+        toast.error("Sign in to exit positions");
+        return;
+      }
+      setExitingKey(instrumentKey);
+      try {
+        const res = await fetch(`${apiBase}/paper/position/close`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            instrumentKey,
+            exitPrice: Number(exitPrice.toFixed(4)),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.message || "Could not exit position");
+        await refreshMe();
+        window.dispatchEvent(new Event(PAPER_POSITIONS_REFRESH_EVENT));
+        const line = Number(data?.lineRealized ?? NaN);
+        if (Number.isFinite(line)) {
+          toast.success(`Exited · ${formatPnl(line)} on this leg`);
+        } else {
+          toast.success("Position exited");
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Exit failed");
+      } finally {
+        setExitingKey(null);
+      }
+    },
+    [token, refreshMe],
+  );
+
+  const openDetail = (p: PaperPosition) => {
+    const id = resolveStockIdFromPosition(p);
+    if (id) {
+      navigate(`/stock/${encodeURIComponent(id)}`);
+      return;
+    }
+    toast.message("Open the underlying on Explore", {
+      description: "Index / F&O legs open the index or symbol page when available.",
+    });
+  };
+
+  const pnlCard = (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-4">
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          Total P&amp;L
+        </p>
+        <p
+          className={cn(
+            "mt-1 text-base font-bold tabular-nums leading-none",
+            totalPnl >= 0 ? "text-profit" : "text-loss",
+          )}
+        >
+          {formatPnl(totalPnl)}
+        </p>
+      </div>
+      <button
+        type="button"
+        className="flex shrink-0 items-center gap-1 text-xs font-medium text-profit hover:underline"
+      >
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-profit/15 text-[10px]">
+          ₹
+        </span>
+        Set Safe Exit
+      </button>
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <div className={cn("py-8 text-sm text-muted-foreground", className)}>Loading positions…</div>
+    );
+  }
+
+  if (positions.length === 0) {
+    return (
+      <div className={cn("py-8 text-sm text-muted-foreground", className)}>
+        No positions yet. Place a trade to see them here.
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn("space-y-4", className)}>
+      {pnlCard}
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-1">
+        <button
+          type="button"
+          className="rounded-lg p-2 text-muted-foreground hover:bg-muted"
+          aria-label="Filter"
+        >
+          <ListFilter className="h-5 w-5" />
+        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="rounded-lg p-2 text-muted-foreground hover:bg-muted"
+            aria-label="Analytics"
+          >
+            <LineChart className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            className="rounded-lg p-2 text-muted-foreground hover:bg-muted"
+            aria-label="Exit"
+          >
+            <SquareArrowUpRight className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            className="rounded-lg bg-primary p-2 text-primary-foreground"
+            aria-label="List view"
+          >
+            <LayoutList className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* List */}
+      <div
+        className={cn(
+          "space-y-0 divide-y divide-border rounded-2xl border border-border bg-card",
+          compact && "rounded-xl",
+        )}
+      >
+        {rows.map(({ p, mkt, pnl }) => (
+          <div
+            key={p.instrumentKey}
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              if (!p.exited) openDetail(p);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (!p.exited) openDetail(p);
+              }
+            }}
+            className={cn(
+              "flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors",
+              p.exited ? "opacity-70" : "hover:bg-muted/40",
+            )}
+          >
+            <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+              <span>{productLine(p)}</span>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {!p.exited && (
+                  <button
+                    type="button"
+                    title="Exit at current market (paper)"
+                    disabled={!token || exitingKey === p.instrumentKey}
+                    onClick={(e) => void exitPosition(e, p.instrumentKey, mkt)}
+                    className="rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-foreground hover:bg-muted disabled:opacity-40"
+                  >
+                    {exitingKey === p.instrumentKey ? "…" : "Exit"}
+                  </button>
+                )}
+                <span className="rounded bg-profit/20 px-1.5 py-0.5 text-[10px] font-semibold text-profit">
+                  B &gt;
+                </span>
+              </div>
+            </div>
+            <div className="flex items-start justify-between gap-3">
+              <p className="min-w-0 flex-1 text-xs font-semibold leading-snug text-foreground">
+                {formatPositionTitle(p)}
+              </p>
+              <p
+                className={cn(
+                  "shrink-0 text-base font-semibold tabular-nums leading-none",
+                  pnl >= 0 ? "text-profit" : "text-loss",
+                )}
+              >
+                {pnl >= 0 ? "+" : ""}₹{pnl.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Avg ₹{Number(p.avgPrice || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+              <span>Mkt ₹{mkt.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default PositionsPanel;

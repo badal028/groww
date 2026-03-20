@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Settings, Wallet, Package, User, Building2, Share2, Headphones, FileText } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 const menuItems = [
   { icon: Wallet, label: '$0.00', sublabel: 'Stocks, F&O balance', action: 'Add money', actionColor: true },
@@ -14,6 +15,14 @@ const menuItems = [
 
 const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
+  const walletLabel = `₹${Number(user?.walletInr ?? 0).toLocaleString('en-IN')}`;
+
+  const userMenuItems = menuItems.map((item) =>
+    item.icon === Wallet
+      ? { ...item, label: walletLabel }
+      : item,
+  );
 
   return (
     <div className="min-h-screen bg-background pb-16 lg:pb-0">
@@ -36,12 +45,13 @@ const ProfilePage: React.FC = () => {
               U
             </div>
           </div>
-          <h1 className="text-lg font-semibold text-foreground lg:text-xl">Paper Trader</h1>
+          <h1 className="text-lg font-semibold text-foreground lg:text-xl">{user?.name || 'Paper Trader'}</h1>
+          <p className="text-sm text-muted-foreground">{user?.email || ''}</p>
         </div>
 
         {/* Menu Items */}
         <div className="flex-1 px-4 lg:px-0 lg:max-w-xl">
-          {menuItems.map((item, i) => (
+          {userMenuItems.map((item, i) => (
             <button
               key={i}
               className="flex w-full items-center justify-between border-b border-border py-4 text-left hover:bg-muted/50 transition-colors rounded px-2 -mx-2"
@@ -62,6 +72,16 @@ const ProfilePage: React.FC = () => {
               )}
             </button>
           ))}
+
+          <button
+            onClick={() => {
+              logout();
+              navigate('/login');
+            }}
+            className="mt-6 w-full rounded-lg border border-border px-4 py-3 text-sm font-semibold text-foreground hover:bg-muted"
+          >
+            Logout
+          </button>
         </div>
       </div>
 

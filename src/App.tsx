@@ -4,13 +4,14 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/hooks/useTheme";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import SplashScreen from "./pages/SplashScreen";
 import LoginPage from "./pages/LoginPage";
 import StocksPage from "./pages/StocksPage";
 import StockDetailPage from "./pages/StockDetailPage";
 import MutualFundsPage from "./pages/MutualFundsPage";
 import ProfilePage from "./pages/ProfilePage";
-import BottomNav from "./components/BottomNav";
+import AdminPage from "./pages/AdminPage";
 import DesktopSidebar from "./components/DesktopSidebar";
 import NotFound from "./pages/NotFound.tsx";
 
@@ -18,7 +19,13 @@ const queryClient = new QueryClient();
 
 const AppLayout = () => {
   const location = useLocation();
+  const { token, loading } = useAuth();
   const isFullScreenPage = location.pathname === '/' || location.pathname === '/login';
+  const hideDesktopSidebar = location.pathname === '/stocks';
+
+  if (!isFullScreenPage && !loading && !token) {
+    return <LoginPage />;
+  }
 
   if (isFullScreenPage) {
     return (
@@ -32,18 +39,17 @@ const AppLayout = () => {
   }
 
   return (
-    <div className="flex min-h-screen w-full">
-      <DesktopSidebar />
-      <main className="flex-1 min-w-0">
+    <div className="flex min-h-screen w-full lg:h-screen lg:overflow-hidden">
+      {!hideDesktopSidebar && <DesktopSidebar />}
+      <main className={`flex-1 min-w-0 lg:h-screen lg:overflow-y-auto ${hideDesktopSidebar ? '' : 'lg:ml-60'}`}>
         <Routes>
           <Route path="/stocks" element={<StocksPage />} />
           <Route path="/stock/:id" element={<StockDetailPage />} />
           <Route path="/mutual-funds" element={<MutualFundsPage />} />
-          <Route path="/pay" element={<StocksPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
-        <BottomNav />
       </main>
     </div>
   );
@@ -52,13 +58,15 @@ const AppLayout = () => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AppLayout />
-        </BrowserRouter>
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <AppLayout />
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
     </ThemeProvider>
   </QueryClientProvider>
 );

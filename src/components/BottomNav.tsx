@@ -1,11 +1,10 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { TrendingUp, BarChart3, Play } from 'lucide-react';
+import { TrendingUp, BarChart3 } from 'lucide-react';
 
 const tabs = [
   { path: '/stocks', label: 'Stocks', icon: TrendingUp },
   { path: '/mutual-funds', label: 'Mutual Funds', icon: BarChart3 },
-  { path: '/pay', label: 'UPI', icon: Play },
 ];
 
 const BottomNav: React.FC = () => {
@@ -17,7 +16,7 @@ const BottomNav: React.FC = () => {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card lg:hidden">
-      <div className="mx-auto flex max-w-lg items-center justify-around">
+      <div className="mx-auto flex max-w-lg items-center justify-around bg-card">
         {tabs.map(tab => {
           const isActive = location.pathname === tab.path;
           return (

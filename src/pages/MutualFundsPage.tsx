@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import TopHeader from '@/components/TopHeader';
+import DesktopHeader from '@/components/DesktopHeader';
+import { StockSearchDialog } from '@/components/StockSearch';
 import { mutualFunds } from '@/data/mockData';
 
 const tabs = ['Explore', 'Dashboard', 'SIPs', 'Watchlist'];
 
 const MutualFundsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Dashboard');
+  const [stockSearchOpen, setStockSearchOpen] = useState(false);
 
   const totalCurrent = mutualFunds.reduce((s, f) => s + f.currentValue, 0);
   const totalInvested = mutualFunds.reduce((s, f) => s + f.investedValue, 0);
@@ -16,11 +19,9 @@ const MutualFundsPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-background pb-16 lg:pb-0">
       <div className="lg:hidden">
-        <TopHeader title="Mutual Funds" />
+        <TopHeader title="Mutual Funds" onSearchClick={() => setStockSearchOpen(true)} />
       </div>
-      <div className="hidden lg:block border-b border-border bg-card px-8 py-5">
-        <h1 className="text-2xl font-bold text-foreground">Mutual Funds</h1>
-      </div>
+      <DesktopHeader title="Mutual Funds" />
 
       <div className="lg:px-8 lg:py-6">
         {/* Tabs */}
@@ -124,6 +125,8 @@ const MutualFundsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      <StockSearchDialog open={stockSearchOpen} onOpenChange={setStockSearchOpen} />
     </div>
   );
 };
