@@ -1143,7 +1143,8 @@ const distDir = process.env.FRONTEND_DIST_DIR
   : path.resolve(process.cwd(), "dist");
 if (existsSync(path.join(distDir, "index.html"))) {
   app.use(express.static(distDir));
-  app.get("*", (req, res, next) => {
+  // Express 5 / path-to-regexp: app.get("*") throws; use a no-path middleware instead.
+  app.use((req, res, next) => {
     // Don't interfere with backend API routes.
     // Note: do NOT skip "/admin" — the React admin page is at /admin.
     // Admin *API* routes (/admin/users, etc.) are registered above and match first.
