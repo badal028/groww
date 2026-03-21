@@ -1145,14 +1145,15 @@ if (existsSync(path.join(distDir, "index.html"))) {
   app.use(express.static(distDir));
   app.get("*", (req, res, next) => {
     // Don't interfere with backend API routes.
+    // Note: do NOT skip "/admin" — the React admin page is at /admin.
+    // Admin *API* routes (/admin/users, etc.) are registered above and match first.
     if (
       req.path.startsWith("/paper") ||
       req.path.startsWith("/auth") ||
       req.path.startsWith("/wallet") ||
       req.path.startsWith("/kite") ||
       req.path.startsWith("/api") ||
-      req.path.startsWith("/ws") ||
-      req.path.startsWith("/admin")
+      req.path.startsWith("/ws")
     ) {
       return next();
     }
