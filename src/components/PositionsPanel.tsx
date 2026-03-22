@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { PAPER_POSITIONS_REFRESH_EVENT } from "@/hooks/usePaperTrading";
 import { toast } from "sonner";
+import SwipeRevealExit from "@/components/SwipeRevealExit";
+import { formatFoOrderDescriptionLine, showPositionExitToast } from "@/utils/tradingToasts";
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
 
@@ -44,7 +46,7 @@ function formatPositionTitle(p: PaperPosition): string {
 }
 
 function productLine(p: PaperPosition): string {
-  return "Delivery · NSE";
+  return String(p.instrumentType).toUpperCase() === "FO" ? "NRML · NFO" : "Delivery · NSE";
 }
 
 function formatPnl(n: number): string {
@@ -82,10 +84,8 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
   );
   const totalPnl = realizedPnl + openPnl;
 
-  const exitPosition = useCallback(
-    async (e: React.MouseEvent, instrumentKey: string, exitPrice: number) => {
-      e.preventDefault();
-      e.stopPropagation();
+  const exitPositionAt = useCallback(
+    async (instrumentKey: string, exitPrice: number, p: PaperPosition) => {
       if (!token) {
         toast.error("Sign in to exit positions");
         return;
@@ -108,8 +108,12 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
         await refreshMe();
         window.dispatchEvent(new Event(PAPER_POSITIONS_REFRESH_EVENT));
         const line = Number(data?.lineRealized ?? NaN);
+        const detail =
+          p.instrumentType === "FO" && p.expiry && p.strike != null && p.optionType
+            ? formatFoOrderDescriptionLine(p.symbol, p.expiry, p.strike, p.optionType, p.quantity, "qty closed.")
+            : `${p.symbol} · ${Math.round(p.quantity)} / ${Math.round(p.quantity)} qty closed.`;
         if (Number.isFinite(line)) {
-          toast.success(`Exited · ${formatPnl(line)} on this leg`);
+          showPositionExitToast(detail, `Realized ${formatPnl(line)}`);
         } else {
           toast.success("Position exited");
         }
@@ -141,7 +145,7 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
         </p>
         <p
           className={cn(
-            "mt-1 text-base font-bold tabular-nums leading-none",
+            "mt-1 text-[15px] font-bold tabular-nums leading-none tracking-tight lg:text-[14px]",
             totalPnl >= 0 ? "text-profit" : "text-loss",
           )}
         >
@@ -215,67 +219,86 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
       {/* List */}
       <div
         className={cn(
-          "space-y-0 divide-y divide-border rounded-2xl border border-border bg-card",
+          "overflow-hidden rounded-2xl border border-border bg-card",
           compact && "rounded-xl",
         )}
       >
-        {rows.map(({ p, mkt, pnl }) => (
-          <div
-            key={p.instrumentKey}
-            role="button"
-            tabIndex={0}
-            onClick={() => {
-              if (!p.exited) openDetail(p);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                if (!p.exited) openDetail(p);
-              }
-            }}
-            className={cn(
-              "flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors",
-              p.exited ? "opacity-70" : "hover:bg-muted/40",
-            )}
-          >
-            <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-              <span>{productLine(p)}</span>
-              <div className="flex shrink-0 items-center gap-1.5">
-                {!p.exited && (
-                  <button
-                    type="button"
-                    title="Exit at current market (paper)"
-                    disabled={!token || exitingKey === p.instrumentKey}
-                    onClick={(e) => void exitPosition(e, p.instrumentKey, mkt)}
-                    className="rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-foreground hover:bg-muted disabled:opacity-40"
-                  >
-                    {exitingKey === p.instrumentKey ? "…" : "Exit"}
-                  </button>
-                )}
-                <span className="rounded bg-profit/20 px-1.5 py-0.5 text-[10px] font-semibold text-profit">
-                  B &gt;
-                </span>
+        {rows.map(({ p, mkt, pnl }) => {
+          const rowInner = (
+            <>
+              <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <span>{productLine(p)}</span>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {!p.exited && (
+                    <button
+                      type="button"
+                      title="Exit at current market (paper)"
+                      disabled={!token || exitingKey === p.instrumentKey}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void exitPositionAt(p.instrumentKey, mkt, p);
+                      }}
+                      className="hidden rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-foreground hover:bg-muted disabled:opacity-40 lg:inline-flex"
+                    >
+                      {exitingKey === p.instrumentKey ? "…" : "Exit"}
+                    </button>
+                  )}
+                  <span className="rounded bg-profit/20 px-1.5 py-0.5 text-[10px] font-semibold text-profit">
+                    B &gt;
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="flex items-start justify-between gap-3">
-              <p className="min-w-0 flex-1 text-xs font-semibold leading-snug text-foreground">
-                {formatPositionTitle(p)}
-              </p>
-              <p
+              <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 flex-1 text-[12px] font-semibold leading-snug text-foreground">
+                  {formatPositionTitle(p)}
+                </p>
+                <p
+                  className={cn(
+                    "shrink-0 text-[12px] font-semibold tabular-nums leading-none",
+                    pnl >= 0 ? "text-profit" : "text-loss",
+                  )}
+                >
+                  {pnl >= 0 ? "+" : ""}₹{pnl.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="flex items-center justify-between text-[12px] text-muted-foreground">
+                <span>Avg ₹{Number(p.avgPrice || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                <span>Mkt ₹{mkt.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+              </div>
+            </>
+          );
+
+          return (
+            <SwipeRevealExit
+              key={p.instrumentKey}
+              enabled={Boolean(compact) && !p.exited}
+              disabled={!token || exitingKey === p.instrumentKey}
+              onExit={() => void exitPositionAt(p.instrumentKey, mkt, p)}
+              className="border-b border-border last:border-b-0"
+            >
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (!p.exited) openDetail(p);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    if (!p.exited) openDetail(p);
+                  }
+                }}
                 className={cn(
-                  "shrink-0 text-base font-semibold tabular-nums leading-none",
-                  pnl >= 0 ? "text-profit" : "text-loss",
+                  "flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors",
+                  p.exited ? "opacity-70" : "hover:bg-muted/40",
                 )}
               >
-                {pnl >= 0 ? "+" : ""}₹{pnl.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-              </p>
-            </div>
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Avg ₹{Number(p.avgPrice || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-              <span>Mkt ₹{mkt.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-            </div>
-          </div>
-        ))}
+                {rowInner}
+              </div>
+            </SwipeRevealExit>
+          );
+        })}
       </div>
     </div>
   );

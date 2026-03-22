@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
+import { formatFoOrderDescriptionLine, showOrderExecutedToast } from "@/utils/tradingToasts";
 import { usePaperTrading } from "@/hooks/usePaperTrading";
 import { useAuth } from "@/hooks/useAuth";
 import { isValidEquityQty } from "@/utils/equityLots";
@@ -254,7 +255,15 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
       toast.error(result.message || "Order failed");
       return false;
     }
-    toast.success(`${side} order filled`);
+    showOrderExecutedToast(
+      formatFoOrderDescriptionLine(
+        contract.underlyingSymbol,
+        contract.expiry,
+        contract.strike,
+        contract.optionType,
+        qtyNum,
+      ),
+    );
     onOpenChange(false);
     navigate("/stocks?tab=Positions");
     return true;

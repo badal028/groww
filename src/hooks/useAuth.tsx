@@ -18,6 +18,8 @@ type AuthContextType = {
   loading: boolean;
   login: (payload: LoginPayload) => Promise<{ ok: boolean; message?: string }>;
   signup: (payload: SignupPayload) => Promise<{ ok: boolean; message?: string }>;
+  /** After Google OAuth redirect with JWT in URL hash. */
+  applyAuthToken: (jwt: string) => Promise<{ ok: boolean; message?: string }>;
   logout: () => void;
   refreshMe: () => Promise<void>;
 };
@@ -95,6 +97,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const applyAuthToken = useCallback(async (jwt: string) => {
+    try {
+      const res = await fetch(`${apiBase}/auth/me`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      if (!res.ok) {
+        localStorage.removeItem(TOKEN_KEY);
+        setToken(null);
+        setUser(null);
+        return { ok: false, message: "Invalid or expired session" };
+      }
+      const data = await res.json();
+      const u = data.user;
+      localStorage.setItem(TOKEN_KEY, jwt);
+      setToken(jwt);
+      if (u && typeof u === "object") {
+        setUser({
+          ...u,
+          walletInr: Number(u.walletInr ?? 0),
+          realizedPnlInr: Number(u.realizedPnlInr ?? 0),
+        });
+      }
+      return { ok: true };
+    } catch {
+      return { ok: false, message: "Unable to verify session" };
+    }
+  }, []);
+
   const signup = useCallback(async (payload: SignupPayload) => {
     try {
       const res = await fetch(`${apiBase}/auth/signup`, {
@@ -104,6 +134,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       const data = await res.json();
       if (!res.ok) return { ok: false, message: data?.message || "Signup failed" };
+      // Server returns JWT + user on signup — log in immediately (same as login).
+      if (data.token) {
+        localStorage.setItem(TOKEN_KEY, data.token);
+        setToken(data.token);
+        const u = data.user;
+        setUser(
+          u
+            ? {
+                ...u,
+                walletInr: Number(u.walletInr ?? 0),
+                realizedPnlInr: Number(u.realizedPnlInr ?? 0),
+              }
+            : null,
+        );
+      }
       return { ok: true };
     } catch {
       return { ok: false, message: "Unable to connect backend" };
@@ -117,8 +162,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const value = useMemo(
-    () => ({ user, token, loading, login, signup, logout, refreshMe }),
-    [user, token, loading, login, signup, logout, refreshMe],
+    () => ({ user, token, loading, login, signup, applyAuthToken, logout, refreshMe }),
+    [user, token, loading, login, signup, applyAuthToken, logout, refreshMe],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

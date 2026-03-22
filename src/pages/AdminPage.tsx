@@ -13,6 +13,12 @@ function formatInr(n: number): string {
 type TodaySignup = { id: string; email: string };
 type AdminSummary = { today: string; signupsTodayCount: number; signupsToday: TodaySignup[] };
 
+type DailySignupRow = {
+  date: string;
+  count: number;
+  signups: { id: string; email: string }[];
+};
+
 type AdminUserPnl = {
   id: string;
   name: string;
@@ -61,6 +67,7 @@ export default function AdminPage() {
   }, [user?.email]);
 
   const [summary, setSummary] = useState<AdminSummary | null>(null);
+  const [dailyRows, setDailyRows] = useState<DailySignupRow[]>([]);
   const [users, setUsers] = useState<AdminUserPnl[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -88,19 +95,23 @@ export default function AdminPage() {
       try {
         setLoading(true);
         setErr(null);
-        const [sRes, uRes] = await Promise.all([
+        const [sRes, dRes, uRes] = await Promise.all([
           fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
+          fetch(`${apiBase}/admin/signups/daily?days=14`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/users/pnl`, { headers: authHeaders }),
         ]);
 
         if (!sRes.ok) throw new Error(await sRes.text().catch(() => "Summary fetch failed"));
+        if (!dRes.ok) throw new Error(await dRes.text().catch(() => "Daily signups fetch failed"));
         if (!uRes.ok) throw new Error(await uRes.text().catch(() => "Users fetch failed"));
 
         const sData = await sRes.json();
+        const dData = await dRes.json();
         const uData = await uRes.json();
 
         if (cancelled) return;
         setSummary(sData?.signupsTodayCount != null ? sData : null);
+        setDailyRows(Array.isArray(dData?.rows) ? dData.rows : []);
         setUsers(Array.isArray(uData?.users) ? uData.users : []);
         if (!selectedUserId && Array.isArray(uData?.users) && uData.users.length > 0) {
           setSelectedUserId(uData.users[0].id);
@@ -187,6 +198,38 @@ export default function AdminPage() {
             ) : (
               <div className="mt-2 text-sm text-muted-foreground">No signups today</div>
             )}
+          </div>
+
+          <div className="mb-4 overflow-x-auto rounded-xl border border-border bg-card">
+            <div className="border-b border-border px-4 py-3 text-sm font-semibold">Signups by date (last 14 days)</div>
+            <table className="w-full min-w-[480px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/30 text-xs text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">Date (IST)</th>
+                  <th className="px-4 py-2 font-medium">Count</th>
+                  <th className="px-4 py-2 font-medium">Emails</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-3 text-muted-foreground">
+                      No data
+                    </td>
+                  </tr>
+                ) : (
+                  dailyRows.map((row) => (
+                    <tr key={row.date} className="border-b border-border last:border-0">
+                      <td className="whitespace-nowrap px-4 py-2 tabular-nums text-foreground">{row.date}</td>
+                      <td className="px-4 py-2 tabular-nums">{row.count}</td>
+                      <td className="max-w-[min(100vw,28rem)] break-words px-4 py-2 text-xs text-muted-foreground">
+                        {row.signups.length ? row.signups.map((s) => s.email).join(", ") : "—"}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">

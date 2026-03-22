@@ -8,6 +8,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { KiteConnect } from "kiteconnect";
+import { OAuth2Client } from "google-auth-library";
 import { createUser, getUserByEmail, getUserById, updateUser, getAllUsers } from "./store.js";
 import { attachMarketStream, bumpMarketStreamResync } from "./marketStream.js";
 
@@ -232,11 +233,60 @@ dotenv.config({ path: ".env.server" });
 dotenv.config();
 
 const app = express();
+if (process.env.TRUST_PROXY === "1") {
+  app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS) || 1);
+}
 const port = Number(process.env.PORT || 3001);
 const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:8080";
 const jwtSecret = process.env.JWT_SECRET || "dev-insecure-secret-change-this";
 const defaultWalletBalance = Number(process.env.DEFAULT_VIRTUAL_BALANCE_INR || 10_000_000);
 const adminEmail = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+
+const googleClientId = process.env.GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+/** Must match Google Cloud "Authorized redirect URIs" exactly (e.g. https://growwtrader.in/auth/google/callback). */
+const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI || `http://127.0.0.1:${port}/auth/google/callback`;
+
+let googleOAuthClient = null;
+if (googleClientId && googleClientSecret) {
+  googleOAuthClient = new OAuth2Client(googleClientId, googleClientSecret, googleRedirectUri);
+  // eslint-disable-next-line no-console
+  console.log(
+    `Google OAuth: register these under Authorized redirect URIs (local dev uses request host — add BOTH if you switch localhost vs 127.0.0.1):\n  http://localhost:${port}/auth/google/callback\n  http://127.0.0.1:${port}/auth/google/callback\n  (production: ${googleRedirectUri})`,
+  );
+} else {
+  // eslint-disable-next-line no-console
+  console.warn("GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET missing. /auth/google will be unavailable.");
+}
+
+/** Callback URL sent to Google — must match Authorized redirect URIs exactly (same host as /auth/google). */
+const getGoogleOAuthRedirectUri = (req) => {
+  const host = req.get("host");
+  if (!host) return googleRedirectUri;
+  const rawProto = req.get("x-forwarded-proto") || req.protocol || "http";
+  const proto = String(rawProto).split(",")[0].trim();
+  return `${proto}://${host}/auth/google/callback`;
+};
+
+/** CSRF state for OAuth (single-node; good enough for one PM2 process). */
+const oauthStates = new Map();
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const pruneOAuthStates = () => {
+  const now = Date.now();
+  for (const [k, t] of oauthStates) {
+    if (now - t > OAUTH_STATE_TTL_MS) oauthStates.delete(k);
+  }
+};
+const saveOAuthState = (state) => {
+  pruneOAuthStates();
+  oauthStates.set(state, Date.now());
+};
+const consumeOAuthState = (state) => {
+  const t = oauthStates.get(state);
+  if (!t || Date.now() - t > OAUTH_STATE_TTL_MS) return false;
+  oauthStates.delete(state);
+  return true;
+};
 
 const apiKey = process.env.KITE_API_KEY;
 const apiSecret = process.env.KITE_API_SECRET;
@@ -433,6 +483,87 @@ app.get("/auth/me", authMiddleware, (req, res) => {
   });
 });
 
+/** Start Google OAuth (browser redirect). */
+app.get("/auth/google", (req, res) => {
+  if (!googleOAuthClient) {
+    return res.status(503).send("Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.");
+  }
+  const redirectUri = getGoogleOAuthRedirectUri(req);
+  const state = randomUUID();
+  saveOAuthState(state);
+  const url = googleOAuthClient.generateAuthUrl({
+    access_type: "online",
+    scope: [
+      "openid",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
+    ],
+    state,
+    prompt: "select_account",
+    redirect_uri: redirectUri,
+  });
+  res.redirect(url);
+});
+
+/** Google redirects here with ?code=&state= */
+app.get("/auth/google/callback", async (req, res) => {
+  const qErr = req.query.error;
+  if (qErr) {
+    return res.redirect(`${frontendOrigin}/login?error=${encodeURIComponent(String(qErr))}`);
+  }
+  const code = req.query.code;
+  const state = req.query.state;
+  if (!googleOAuthClient) {
+    return res.redirect(`${frontendOrigin}/login?error=oauth_not_configured`);
+  }
+  if (typeof code !== "string" || typeof state !== "string" || !consumeOAuthState(state)) {
+    return res.redirect(`${frontendOrigin}/login?error=invalid_state`);
+  }
+  try {
+    const redirectUri = getGoogleOAuthRedirectUri(req);
+    const { tokens } = await googleOAuthClient.getToken({ code, redirect_uri: redirectUri });
+    if (!tokens.access_token) throw new Error("No access token from Google");
+
+    const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (!userRes.ok) throw new Error(`Google userinfo ${userRes.status}`);
+    const profile = await userRes.json();
+
+    const email = String(profile.email || "")
+      .trim()
+      .toLowerCase();
+    const name = String(profile.name || profile.given_name || email.split("@")[0] || "User").trim();
+    const sub = String(profile.sub || "");
+    if (!email) throw new Error("Google did not return an email");
+
+    let user = getUserByEmail(email);
+    if (!user) {
+      const passwordHash = await bcrypt.hash(randomUUID() + sub + jwtSecret, 10);
+      user = createUser({
+        id: randomUUID(),
+        name,
+        email,
+        passwordHash,
+        googleSub: sub,
+        walletInr: defaultWalletBalance,
+        realizedPnlInr: 0,
+        createdAt: new Date().toISOString(),
+      });
+    } else if (sub) {
+      const linked = updateUser(user.id, (prev) => ({ ...prev, googleSub: sub }));
+      if (linked) user = linked;
+    }
+
+    const token = createToken(user);
+    return res.redirect(`${frontendOrigin}/login#token=${encodeURIComponent(token)}`);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("Google OAuth callback error:", e?.message || e);
+    return res.redirect(`${frontendOrigin}/login?error=google_auth_failed`);
+  }
+});
+
 app.get("/wallet", authMiddleware, (req, res) => {
   res.json({
     status: "ok",
@@ -479,6 +610,28 @@ app.get("/admin/summary/today", authMiddleware, ensureAdmin, (req, res) => {
     signupsTodayCount: signupsToday.length,
     signupsToday: signupsToday.map((u) => ({ id: u.id, email: u.email })),
   });
+});
+
+/** Last N calendar days (IST) with signup counts and emails — for admin table. */
+app.get("/admin/signups/daily", authMiddleware, ensureAdmin, (req, res) => {
+  const users = getAllUsers();
+  const days = Math.min(90, Math.max(1, Number(req.query.days || 14)));
+  const dates = [];
+  for (let i = days - 1; i >= 0; i -= 1) {
+    dates.push(isoDateInIST(new Date(Date.now() - i * 86400000)));
+  }
+  const byDate = new Map();
+  for (const u of users) {
+    const d = isoDateInIST(u.createdAt);
+    if (!d) continue;
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d).push({ id: u.id, email: u.email });
+  }
+  const rows = dates.map((date) => {
+    const signups = byDate.get(date) || [];
+    return { date, count: signups.length, signups };
+  });
+  return res.json({ status: "ok", rows });
 });
 
 app.get("/admin/users", authMiddleware, ensureAdmin, (req, res) => {

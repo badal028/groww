@@ -31,6 +31,21 @@ VITE_MARKET_DATA_API_BASE=http://127.0.0.1:3001
 
 5. Restart frontend and click **Connect Kite** badge on `Stocks` page.
 
+### Google Sign-In (OAuth)
+
+`Error 400: redirect_uri_mismatch` means the callback URL your app sends to Google is **not** in **Authorized redirect URIs** for that OAuth client (exact string: scheme, host, port, path).
+
+The backend builds the redirect URI from the **request** (so `http://127.0.0.1:3001/...` and `http://localhost:3001/...` are not mixed up). You must register **both** for local dev:
+
+- `http://127.0.0.1:3001/auth/google/callback`
+- `http://localhost:3001/auth/google/callback`
+
+1. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env.server` (see `.env.server.example`). `GOOGLE_REDIRECT_URI` is the fallback / production callback URL.
+2. Google Cloud Console → **Credentials** → your **OAuth 2.0 Web client** → **Authorized redirect URIs** → add the two URLs above (plus your production URL when you deploy).
+3. Save, wait a minute, restart `npm run server`, try again.
+
+Deploy to **https://growwtrader.in** (build, nginx, Google OAuth, `.env`): [DEPLOY.md](./DEPLOY.md).
+
 ### Stock search & logos
 
 - **Search**: Tap the **search icon** in the header (Stocks / Mutual Funds / stock detail) to open the search modal. Matches **name**, **symbol**, and route **id** (indices included). **Ctrl/Cmd+K** opens search on **Stocks** and on **Mutual Funds** (desktop header).
