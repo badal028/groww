@@ -115,15 +115,15 @@ const StocksPage: React.FC = () => {
               key={index.name}
               type="button"
               onClick={() => navigate(`/stock/${encodeURIComponent(index.name)}`)}
-              className="w-[220px] min-w-[220px] max-w-[220px] flex-shrink-0 rounded-lg border border-border bg-card px-4 py-2.5 text-left transition-colors hover:border-primary/30"
+              className="w-[min(92vw,320px)] min-w-[260px] max-w-[320px] flex-shrink-0 rounded-lg border border-border bg-card px-4 py-2.5 text-left transition-colors hover:border-primary/30"
             >
-              <p className="text-xs font-medium text-muted-foreground">{index.name}</p>
-              <div className="flex min-w-0 items-baseline gap-1.5 overflow-hidden">
-                <span className="text-sm font-semibold tabular-nums text-foreground">
+              <p className="truncate text-xs font-medium text-muted-foreground">{index.name}</p>
+              <div className="mt-0.5 flex flex-nowrap items-baseline gap-1.5 overflow-x-auto scrollbar-hide">
+                <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
                   {index.value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </span>
                 <span
-                  className={`text-xs font-medium tabular-nums ${index.change >= 0 ? 'text-profit' : 'text-loss'}`}
+                  className={`shrink-0 whitespace-nowrap text-xs font-medium tabular-nums ${index.change >= 0 ? 'text-profit' : 'text-loss'}`}
                 >
                   {index.change >= 0 ? '+' : ''}
                   {index.change.toFixed(2)} ({index.changePercent.toFixed(2)}%)
@@ -308,11 +308,17 @@ const StocksPage: React.FC = () => {
                 key={index.name}
                 type="button"
                 onClick={() => navigate(`/stock/${encodeURIComponent(index.name)}`)}
-                className="flex min-w-[260px] flex-shrink-0 items-center gap-2 whitespace-nowrap rounded px-2 py-1 tabular-nums transition-colors hover:bg-muted/50"
+                className="flex min-w-[360px] flex-shrink-0 flex-nowrap items-center gap-2 rounded px-2 py-1.5 tabular-nums transition-colors hover:bg-muted/50"
               >
-                <span className="font-semibold text-foreground">{index.name.toUpperCase()}</span>
-                <span className="text-foreground">{index.value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                <span className={`font-medium ${index.change >= 0 ? 'text-profit' : 'text-loss'}`}>
+                <span className="max-w-[8rem] shrink-0 truncate font-semibold text-foreground">
+                  {index.name.toUpperCase()}
+                </span>
+                <span className="shrink-0 whitespace-nowrap text-foreground">
+                  {index.value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </span>
+                <span
+                  className={`shrink-0 whitespace-nowrap font-medium ${index.change >= 0 ? 'text-profit' : 'text-loss'}`}
+                >
                   {index.change >= 0 ? '+' : ''}
                   {index.change.toFixed(2)} ({index.changePercent.toFixed(2)}%)
                 </span>

@@ -5,7 +5,11 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, "..");
 import { createServer } from "node:http";
 import { KiteConnect } from "kiteconnect";
 import { OAuth2Client } from "google-auth-library";
@@ -229,8 +233,8 @@ const toExpiryLabel = (isoDate) => {
   return `${dd}-${mon}-${yyyy}`;
 };
 
-dotenv.config({ path: ".env.server" });
-dotenv.config();
+dotenv.config({ path: path.join(repoRoot, ".env.server") });
+dotenv.config({ path: path.join(repoRoot, ".env") });
 
 const app = express();
 if (process.env.TRUST_PROXY === "1") {
@@ -1293,7 +1297,7 @@ app.post("/kite/logout", (_req, res) => {
 // This lets you run only one public service and keeps URLs under the same domain.
 const distDir = process.env.FRONTEND_DIST_DIR
   ? String(process.env.FRONTEND_DIST_DIR)
-  : path.resolve(process.cwd(), "dist");
+  : path.join(repoRoot, "dist");
 if (existsSync(path.join(distDir, "index.html"))) {
   app.use(express.static(distDir));
   // Express 5 / path-to-regexp: app.get("*") throws; use a no-path middleware instead.

@@ -144,3 +144,6 @@ For localhost, register **both** (see [README](./README.md) Google section):
 - `http://localhost:3001/auth/google/callback`
 
 Production URI `https://growwtrader.in/auth/google/callback` can stay in the same OAuth client alongside these.
+
+cd D:\Cloner\groww-clone-studio
+ssh -i "C:\Users\badal\Downloads\ssh-key-2026-03-20.key" ubuntu@141.148.217.18'
