@@ -115,7 +115,7 @@ const StocksPage: React.FC = () => {
               key={index.name}
               type="button"
               onClick={() => navigate(`/stock/${encodeURIComponent(index.name)}`)}
-              className="w-[min(92vw,320px)] min-w-[260px] max-w-[320px] flex-shrink-0 rounded-lg border border-border bg-card px-4 py-2.5 text-left transition-colors hover:border-primary/30"
+              className="w-[230px] min-w-[200px] max-w-[230px] flex-shrink-0 rounded-lg border border-border bg-card px-4 py-2.5 text-left transition-colors hover:border-primary/30"
             >
               <p className="truncate text-xs font-medium text-muted-foreground">{index.name}</p>
               <div className="mt-0.5 flex flex-nowrap items-baseline gap-1.5 overflow-x-auto scrollbar-hide">
