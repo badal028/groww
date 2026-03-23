@@ -58,7 +58,7 @@ export default function SwipeRevealExit({ children, onExit, disabled, className,
   return (
     <div className={cn("relative overflow-hidden rounded-none", className)}>
       <div
-        className="absolute inset-y-0 right-0 z-0 flex w-[72px] flex-col items-center justify-center gap-0.5 bg-[#5c3d2e] text-white"
+        className="absolute inset-y-0 right-0 z-0 flex w-[72px] flex-col items-center justify-center gap-0.5 bg-[#fdf2ec] text-[#cd3d14] dark:bg-[#261410] dark:text-[#cd3d14]"
         style={{ width: PANEL }}
       >
         <button

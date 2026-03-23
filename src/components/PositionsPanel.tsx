@@ -15,7 +15,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { PAPER_POSITIONS_REFRESH_EVENT } from "@/hooks/usePaperTrading";
 import { toast } from "sonner";
 import SwipeRevealExit from "@/components/SwipeRevealExit";
-import { formatFoOrderDescriptionLine, showPositionExitToast } from "@/utils/tradingToasts";
+import { showPositionExitToast } from "@/utils/tradingToasts";
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
 
@@ -71,11 +71,27 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
   const realizedPnl = Number(user?.realizedPnlInr ?? 0);
 
   const rows = useMemo(() => {
-    return positions.map((p) => {
-      const mkt = mktByInstrumentKey[p.instrumentKey] ?? p.avgPrice;
-      const pnl = p.exited ? Number(p.realizedPnlInr ?? 0) : (mkt - p.avgPrice) * p.quantity;
-      return { p, mkt, pnl };
-    });
+    return positions
+      .map((p, idx) => {
+        const mkt = mktByInstrumentKey[p.instrumentKey] ?? p.avgPrice;
+        const pnl = p.exited ? Number(p.realizedPnlInr ?? 0) : (mkt - p.avgPrice) * p.quantity;
+        return { p, mkt, pnl, idx };
+      })
+      .sort((a, b) => {
+        // Keep open positions on top, closed positions at the bottom.
+        if (Boolean(a.p.exited) !== Boolean(b.p.exited)) return a.p.exited ? 1 : -1;
+
+        // Newest open positions first (latest appended row appears at top).
+        if (!a.p.exited) return b.idx - a.idx;
+
+        // For closed positions, prefer latest exit first; fallback to original order.
+        const aExitedAt = a.p.exitedAt ? Date.parse(a.p.exitedAt) : Number.NaN;
+        const bExitedAt = b.p.exitedAt ? Date.parse(b.p.exitedAt) : Number.NaN;
+        if (Number.isFinite(aExitedAt) && Number.isFinite(bExitedAt) && aExitedAt !== bExitedAt) {
+          return bExitedAt - aExitedAt;
+        }
+        return b.idx - a.idx;
+      });
   }, [positions, mktByInstrumentKey]);
 
   const openPnl = useMemo(
@@ -107,16 +123,7 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
         if (!res.ok) throw new Error(data?.message || "Could not exit position");
         await refreshMe();
         window.dispatchEvent(new Event(PAPER_POSITIONS_REFRESH_EVENT));
-        const line = Number(data?.lineRealized ?? NaN);
-        const detail =
-          p.instrumentType === "FO" && p.expiry && p.strike != null && p.optionType
-            ? formatFoOrderDescriptionLine(p.symbol, p.expiry, p.strike, p.optionType, p.quantity, "qty closed.")
-            : `${p.symbol} · ${Math.round(p.quantity)} / ${Math.round(p.quantity)} qty closed.`;
-        if (Number.isFinite(line)) {
-          showPositionExitToast(detail, `Realized ${formatPnl(line)}`);
-        } else {
-          toast.success("Position exited");
-        }
+        showPositionExitToast();
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Exit failed");
       } finally {

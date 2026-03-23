@@ -85,3 +85,36 @@ VITE_TWELVE_DATA_API_KEY=your_api_key_here
 
 When key is present, the app fetches live quotes for mapped NSE symbols.
 When key is not present or a symbol fails, it falls back safely to mock values.
+
+
+hat message means the running server process does not have GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET loaded.
+
+Do this exactly on your VPS:
+
+1) SSH in
+ssh -i "C:\Users\badal\Downloads\ssh-key-2026-03-20.key" ubuntu@141.148.217.18
+2) Open server env file in the app folder
+cd /home/ubuntu/app
+nano .env.server
+Add/update these lines (real values, no quotes):
+
+FRONTEND_ORIGIN=https://growwtrader.in
+TRUST_PROXY=1
+GOOGLE_CLIENT_ID=590430716719-utq3d042ra9315fft8m552e5ui1ldd3a.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=YOUR_REAL_SECRET
+GOOGLE_REDIRECT_URI=https://growwtrader.in/auth/google/callback
+Save in nano: Ctrl+O, Enter, Ctrl+X.
+
+3) Restart PM2 with updated env
+cd /home/ubuntu/app
+TRUST_PROXY=1 NODE_ENV=production pm2 restart groww-backend --update-env
+4) Confirm from logs
+pm2 logs groww-backend --lines 40
+You should NOT see:
+
+GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET missing
+5) Confirm Google route works
+curl -I https://growwtrader.in/auth/google
+Expected: HTTP/1.1 302 (redirect to Google), not 503.
+
+

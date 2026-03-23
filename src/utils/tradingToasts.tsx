@@ -7,7 +7,6 @@ const toastShell =
 const titleClass = "text-[15px] font-semibold leading-tight text-neutral-900";
 const descClass = "mt-0.5 text-[13px] leading-snug text-neutral-600";
 
-/** Format: "NIFTY 17 Feb 25650 Put · 5005 / 5005 qty executed." */
 export function formatFoOrderDescriptionLine(
   symbol: string,
   expiryIso: string | undefined,
@@ -34,7 +33,7 @@ export function formatEquityOrderDescriptionLine(symbol: string, qty: number): s
   return `${symbol} · ${q} / ${q} qty executed.`;
 }
 
-function OrderExecutedBody({ title, description }: { title: string; description: string }) {
+function SimpleTradeToast({ title }: { title: string }) {
   return (
     <div className={toastShell}>
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500">
@@ -42,22 +41,21 @@ function OrderExecutedBody({ title, description }: { title: string; description:
       </span>
       <div className="min-w-0 flex-1">
         <p className={titleClass}>{title}</p>
-        <p className={descClass}>{description}</p>
       </div>
     </div>
   );
 }
 
-/** Groww-style order toast: dark theme uses white card (explicit classes). */
-export function showOrderExecutedToast(descriptionLine: string): void {
-  toast.custom(() => <OrderExecutedBody title="Order executed" description={descriptionLine} />, {
+export function showOrderExecutedToast(side: "BUY" | "SELL"): void {
+  const title = side === "SELL" ? "Sell order executed" : "Buy order executed";
+  toast.custom(() => <SimpleTradeToast title={title} />, {
     duration: 4500,
     position: "bottom-center",
     className: "!bg-transparent !border-0 !p-0 !shadow-none",
   });
 }
 
-export function showPositionExitToast(descriptionLine: string, pnlText: string): void {
+export function showPositionExitToast(): void {
   toast.custom(
     () => (
       <div className={toastShell}>
@@ -66,10 +64,6 @@ export function showPositionExitToast(descriptionLine: string, pnlText: string):
         </span>
         <div className="min-w-0 flex-1">
           <p className={titleClass}>Position exited</p>
-          <p className={descClass}>
-            {descriptionLine}
-            <span className="mt-1 block text-[13px] font-medium text-neutral-800">{pnlText}</span>
-          </p>
         </div>
       </div>
     ),

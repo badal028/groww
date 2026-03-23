@@ -16,7 +16,7 @@ import { usePaperTrading } from '@/hooks/usePaperTrading';
 import { resolveKiteKeyForStock } from '@/services/marketData';
 import { useLiveStockDetail } from '@/hooks/useLiveStockDetail';
 import { toast } from 'sonner';
-import { formatEquityOrderDescriptionLine, showOrderExecutedToast } from '@/utils/tradingToasts';
+import { showOrderExecutedToast } from '@/utils/tradingToasts';
 import FoOptionChainModal, { type FoContract } from '@/components/fo/FoOptionChainModal';
 import FoTradeModal from '@/components/fo/FoTradeModal';
 import EquityTradeBlock from '@/components/EquityTradeBlock';
@@ -161,7 +161,7 @@ const StockDetailPage: React.FC = () => {
       toast.error(result.message || 'Order failed');
       return;
     }
-    showOrderExecutedToast(formatEquityOrderDescriptionLine(displayStock.symbol, quantity));
+    showOrderExecutedToast(side);
     // Navigate to Positions after a filled order
     navigate('/stocks?tab=Positions');
   };
