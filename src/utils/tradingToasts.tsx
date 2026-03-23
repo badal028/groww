@@ -2,10 +2,9 @@ import { toast } from "sonner";
 import { CheckCircle2 } from "lucide-react";
 
 const toastShell =
-  "pointer-events-auto flex w-[min(100vw-2rem,22rem)] items-start gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-neutral-900 shadow-lg dark:border-neutral-200 dark:bg-white dark:text-neutral-900";
+  "pointer-events-auto flex w-[min(100vw-2rem,22rem)] items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-neutral-900 shadow-lg dark:border-neutral-200 dark:bg-white dark:text-neutral-900";
 
-const titleClass = "text-[15px] font-semibold leading-tight text-neutral-900";
-const descClass = "mt-0.5 text-[13px] leading-snug text-neutral-600";
+const titleClass = "text-[15px] font-semibold leading-none text-neutral-900";
 
 export function formatFoOrderDescriptionLine(
   symbol: string,
@@ -36,10 +35,10 @@ export function formatEquityOrderDescriptionLine(symbol: string, qty: number): s
 function SimpleTradeToast({ title }: { title: string }) {
   return (
     <div className={toastShell}>
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500">
         <CheckCircle2 className="h-5 w-5 text-white" strokeWidth={2.5} />
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex h-10 flex-1 items-center">
         <p className={titleClass}>{title}</p>
       </div>
     </div>
@@ -56,21 +55,9 @@ export function showOrderExecutedToast(side: "BUY" | "SELL"): void {
 }
 
 export function showPositionExitToast(): void {
-  toast.custom(
-    () => (
-      <div className={toastShell}>
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500">
-          <CheckCircle2 className="h-5 w-5 text-white" strokeWidth={2.5} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className={titleClass}>Position exited</p>
-        </div>
-      </div>
-    ),
-    {
-      duration: 4500,
-      position: "bottom-center",
-      className: "!bg-transparent !border-0 !p-0 !shadow-none",
-    },
-  );
+  toast.custom(() => <SimpleTradeToast title="Position exited" />, {
+    duration: 4500,
+    position: "bottom-center",
+    className: "!bg-transparent !border-0 !p-0 !shadow-none",
+  });
 }
