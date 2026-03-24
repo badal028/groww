@@ -942,11 +942,16 @@ app.post("/payments/cashfree/webhook", async (req, res) => {
     }
 
     const payload = req.body || {};
-    const orderId = String(payload.order_id || payload.orderId || "");
-    const event = String(payload.event || payload.event_type || "").toUpperCase();
-    const status = String(payload.order_status || payload.tx_status || "").toUpperCase();
-    const amountInr = Number(payload.order_amount || payload.amount || 0);
-    const userId = String(payload.customer_id || payload.customerDetails?.customer_id || "");
+    const data = payload.data || {};
+    const order = data.order || {};
+    const payment = data.payment || {};
+    const customer = data.customer_details || {};
+
+    const orderId = String(order.order_id || "");
+    const event = String(payload.type || "").toUpperCase();
+    const status = String(payment.payment_status || "").toUpperCase();
+    const amountInr = Number(order.order_amount || 0);
+    const userId = String(customer.customer_id || "");
 
     console.log("[Cashfree webhook] payload", { payload, orderId, event, status, amountInr, userId });
 
@@ -970,7 +975,7 @@ app.post("/payments/cashfree/webhook", async (req, res) => {
       } else {
         payments.push({
           orderId,
-          cashfreeOrderId: payload.order_id || payload.orderId || "",
+          cashfreeOrderId: orderId,
           amountInr,
           status: status === "PAID" || status === "SUCCESS" || status === "ORDER_PAID" ? "PAID" : "FAILED",
           createdAt: new Date().toISOString(),
@@ -992,7 +997,7 @@ app.post("/payments/cashfree/webhook", async (req, res) => {
               id: randomUUID(),
               amountInr: Number(amountInr.toFixed(2)),
               orderId,
-              paymentId: String(payload.reference_id || payload.payment_id || ""),
+              paymentId: String(payment.cf_payment_id || ""),
               signature,
               createdAt: new Date().toISOString(),
               via: "cashfree",
