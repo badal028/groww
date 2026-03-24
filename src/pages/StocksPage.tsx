@@ -32,6 +32,7 @@ import PositionsPanel from '@/components/PositionsPanel';
 import { useAuth } from '@/hooks/useAuth';
 import { usePaperOrders } from '@/hooks/usePaperOrders';
 import OrdersPanel from '@/components/OrdersPanel';
+import ProLeaguePanel from '@/components/ProLeaguePanel';
 
 function avatarInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -50,7 +51,7 @@ const StocksPage: React.FC = () => {
 
   const getStocksForTab = () => {
     switch (activeTab) {
-      case 'Holdings': return holdingsData;
+      case 'Leaderboard': return holdingsData;
       case 'ETF': return etfStocks;
       default: return popularStocks;
     }
@@ -62,8 +63,8 @@ const StocksPage: React.FC = () => {
   const { positions, loading: positionsLoading } = usePaperPositions();
   const { orders, loading: ordersLoading } = usePaperOrders();
   const { user, logout } = useAuth();
-  const desktopTopTabs = ['Explore', 'Holdings', 'Positions', 'Orders', 'Watchlist'];
-  const mobileTopTabs = ['Explore', 'Positions', 'Holdings', 'Orders', 'Watchlist', 'ETF'];
+  const desktopTopTabs = ['Explore', 'Leaderboard', 'Positions', 'Orders', 'Watchlist'];
+  const mobileTopTabs = ['Explore', 'Positions', 'Leaderboard', 'Orders', 'Watchlist', 'ETF'];
 
   const goTab = useCallback(
     (tab: string) => {
@@ -156,7 +157,7 @@ const StocksPage: React.FC = () => {
         {/* Section Title */}
         <div className="flex items-center justify-between px-4 py-3 lg:px-0">
           <h2 className="text-base font-semibold text-foreground lg:text-lg">
-            {activeTab === 'Explore' ? 'Most bought on Groww' : activeTab === 'Holdings' ? 'Your Holdings' : activeTab}
+            {activeTab === 'Explore' ? 'Explore' : activeTab}
           </h2>
           {status === 'auth-required' ? (
             <a
@@ -176,6 +177,10 @@ const StocksPage: React.FC = () => {
         ) : activeTab === 'Orders' ? (
           <div className="px-4 pb-6 lg:px-0">
             <OrdersPanel orders={orders} loading={ordersLoading} />
+          </div>
+        ) : activeTab === 'Leaderboard' ? (
+          <div className="px-4 pb-6 lg:px-0">
+            <ProLeaguePanel compact />
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 px-4 lg:px-0 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 lg:gap-4">
@@ -339,10 +344,15 @@ const StocksPage: React.FC = () => {
                 <h2 className="mb-4 text-[1.25rem] font-semibold text-foreground">Orders</h2>
                 <OrdersPanel orders={orders} loading={ordersLoading} />
               </div>
+            ) : activeTab === 'Leaderboard' ? (
+              <div className="mb-4">
+                <h2 className="mb-4 text-[1.25rem] font-semibold text-foreground">Pro-League leaderboard</h2>
+                <ProLeaguePanel />
+              </div>
             ) : (
               <>
                 <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-[1.25rem] font-semibold text-foreground">Most bought stocks on Groww</h2>
+                  <h2 className="text-[1.25rem] font-semibold text-foreground">Explore stocks</h2>
                   {status === 'auth-required' ? (
                     <a
                       href={kiteLoginUrl}

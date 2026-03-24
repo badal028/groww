@@ -16,7 +16,7 @@ import { usePaperTrading } from '@/hooks/usePaperTrading';
 import { resolveKiteKeyForStock } from '@/services/marketData';
 import { useLiveStockDetail } from '@/hooks/useLiveStockDetail';
 import { toast } from 'sonner';
-import { showOrderExecutedToast } from '@/utils/tradingToasts';
+import { showOrderExecutedToast, formatEquityOrderDescriptionLine } from '@/utils/tradingToasts';
 import FoOptionChainModal, { type FoContract } from '@/components/fo/FoOptionChainModal';
 import FoTradeModal from '@/components/fo/FoTradeModal';
 import EquityTradeBlock from '@/components/EquityTradeBlock';
@@ -161,7 +161,7 @@ const StockDetailPage: React.FC = () => {
       toast.error(result.message || 'Order failed');
       return;
     }
-    showOrderExecutedToast(side);
+    showOrderExecutedToast(formatEquityOrderDescriptionLine(displayStock.symbol, quantity));
     // Navigate to Positions after a filled order
     navigate('/stocks?tab=Positions');
   };
@@ -185,8 +185,8 @@ const StockDetailPage: React.FC = () => {
       { label: 'High', value: `₹${(displayStock.price * 1.02).toFixed(2)}` },
       { label: 'Low', value: `₹${(displayStock.price * 0.98).toFixed(2)}` },
       { label: 'Prev Close', value: `₹${(displayStock.price - displayStock.change).toFixed(2)}` },
-      { label: 'Volume', value: '12.4M' },
-      { label: 'Market Cap', value: '₹1.2L Cr' },
+      { label: 'Volume', value: '0' },
+      { label: 'Market Cap', value: '₹0' },
     ];
   }, [liveOhlc, displayStock.price, displayStock.change, displayStock.sector]);
 

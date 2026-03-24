@@ -3,6 +3,7 @@ import type { Stock } from "@/data/mockData";
 import { useAuth } from "@/hooks/useAuth";
 import { getEquityLotSize, isValidEquityQty } from "@/utils/equityLots";
 import { cn } from "@/lib/utils";
+import { isWithinMarketHoursIST } from "@/utils/marketHours";
 
 type Props = {
   stock: Stock;
@@ -44,6 +45,7 @@ const EquityTradeBlock: React.FC<Props> = ({
   const approxAmount = qtyValid && price > 0 ? qtyNum * price : 0;
   const balance = Number(user?.walletInr ?? 0);
   const insufficientBuy = side === "BUY" && qtyValid && approxAmount > balance;
+  const marketOpen = isWithinMarketHoursIST();
 
   const bumpDown = () => {
     const n = qtyNum || 0;
@@ -73,16 +75,7 @@ const EquityTradeBlock: React.FC<Props> = ({
   const indexBlock = stock.sector === "Index";
 
   if (indexBlock) {
-    return (
-      <div
-        className={cn(
-          "rounded-xl border border-border bg-muted/40 p-4 text-center text-sm text-muted-foreground",
-          className,
-        )}
-      >
-        Equity buy/sell isn&apos;t available for indices on this screen.
-      </div>
-    );
+    return null;
   }
 
   const bar = variant === "bar";
@@ -171,6 +164,11 @@ const EquityTradeBlock: React.FC<Props> = ({
           Insufficient balance for this order
         </div>
       )}
+      {!marketOpen && !showLotError && (
+        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-center text-xs text-amber-700 dark:text-amber-400">
+          Order not allowed outside market hours (9:15 AM - 3:30 PM IST)
+        </div>
+      )}
 
       <div className="mt-4 flex items-start justify-between gap-3 text-xs">
         <div>
@@ -195,7 +193,7 @@ const EquityTradeBlock: React.FC<Props> = ({
         type="button"
         onClick={() => qtyValid && onSubmit(side, qtyNum)}
         disabled={
-          placing || !qtyValid || (side === "BUY" && insufficientBuy)
+          placing || !marketOpen || !qtyValid || (side === "BUY" && insufficientBuy)
         }
         className={cn(
           "mt-3 h-11 w-full rounded-lg font-semibold text-primary-foreground disabled:opacity-60",

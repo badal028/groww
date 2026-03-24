@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
@@ -13,7 +13,16 @@ const repoRoot = path.resolve(__dirname, "..");
 import { createServer } from "node:http";
 import { KiteConnect } from "kiteconnect";
 import { OAuth2Client } from "google-auth-library";
-import { createUser, getUserByEmail, getUserById, updateUser, getAllUsers } from "./store.js";
+import Razorpay from "razorpay";
+import {
+  createUser,
+  getUserByEmail,
+  getUserById,
+  updateUser,
+  getAllUsers,
+  getAllContests,
+  upsertContest,
+} from "./store.js";
 import { attachMarketStream, bumpMarketStreamResync } from "./marketStream.js";
 
 let kiteInstrumentsCache = null;
@@ -46,6 +55,74 @@ const isoDateInIST = (dateLike) => {
   const m = parts.find((p) => p.type === "month")?.value;
   const d = parts.find((p) => p.type === "day")?.value;
   return `${y}-${m}-${d}`;
+};
+
+const istMinutesNow = () => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    weekday: "short",
+  }).formatToParts(new Date());
+  const hh = Number(parts.find((p) => p.type === "hour")?.value || "0");
+  const mm = Number(parts.find((p) => p.type === "minute")?.value || "0");
+  const weekday = String(parts.find((p) => p.type === "weekday")?.value || "");
+  return { mins: hh * 60 + mm, weekday };
+};
+
+const isWithinMarketHoursIST = () => {
+  const { mins, weekday } = istMinutesNow();
+  const isWeekend = weekday === "Sat" || weekday === "Sun";
+  if (isWeekend) return false;
+  return mins >= 9 * 60 + 15 && mins <= 15 * 60 + 30;
+};
+
+const nextContestDateISO = () => {
+  const now = new Date();
+  const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  ist.setDate(ist.getDate() + 1);
+  const y = ist.getFullYear();
+  const m = String(ist.getMonth() + 1).padStart(2, "0");
+  const d = String(ist.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+const ensureUserFinancials = (u) => ({
+  ...u,
+  walletInr: Number(u.walletInr ?? defaultWalletBalance),
+  realizedPnlInr: Number(u.realizedPnlInr ?? 0),
+  realWalletInr: Number(u.realWalletInr ?? 0),
+  avatarUrl: u.avatarUrl || null,
+  walletPayments: Array.isArray(u.walletPayments) ? u.walletPayments : [],
+  withdrawalRequests: Array.isArray(u.withdrawalRequests) ? u.withdrawalRequests : [],
+});
+
+const currentContestOrCreate = () => {
+  const all = getAllContests();
+  const today = nextContestDateISO();
+  const existing =
+    all.find((c) => c?.status === "OPEN" && c?.contestDateISO >= today) ||
+    all.find((c) => c?.contestDateISO >= today) ||
+    null;
+  if (existing) return existing;
+
+  const id = `contest-${today}`;
+  const created = upsertContest(id, () => ({
+    id,
+    title: "The Pro-League",
+    contestDateISO: today,
+    entryFeeInr: defaultContestFeeInr,
+    minParticipants: minContestParticipants,
+    maxParticipants: maxContestParticipants,
+    prizePoolInr: { first: 10000, second: 5000, third: 2000 },
+    participants: [],
+    payouts: [],
+    status: "OPEN",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }));
+  return created;
 };
 
 const parseExpiryToISO = (expiryLabel) => {
@@ -244,6 +321,9 @@ const port = Number(process.env.PORT || 3001);
 const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:8080";
 const jwtSecret = process.env.JWT_SECRET || "dev-insecure-secret-change-this";
 const defaultWalletBalance = Number(process.env.DEFAULT_VIRTUAL_BALANCE_INR || 10_000_000);
+const defaultContestFeeInr = Number(process.env.DEFAULT_CONTEST_FEE_INR || 79);
+const minContestParticipants = Number(process.env.MIN_CONTEST_PARTICIPANTS || 500);
+const maxContestParticipants = Number(process.env.MAX_CONTEST_PARTICIPANTS || 500);
 const adminEmail = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
@@ -295,6 +375,16 @@ const consumeOAuthState = (state) => {
 const apiKey = process.env.KITE_API_KEY;
 const apiSecret = process.env.KITE_API_SECRET;
 const redirectUrl = process.env.KITE_REDIRECT_URL || "http://127.0.0.1:3001/kite/callback";
+const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
+const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
+const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
+let razorpay = null;
+if (razorpayKeyId && razorpayKeySecret) {
+  razorpay = new Razorpay({ key_id: razorpayKeyId, key_secret: razorpayKeySecret });
+} else {
+  // eslint-disable-next-line no-console
+  console.warn("RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET missing. Real wallet payment endpoints disabled.");
+}
 
 if (!apiKey || !apiSecret) {
   // eslint-disable-next-line no-console
@@ -422,7 +512,9 @@ app.post("/auth/signup", async (req, res) => {
       email: String(email).trim().toLowerCase(),
       passwordHash,
       walletInr: defaultWalletBalance,
+      realWalletInr: 0,
       realizedPnlInr: 0,
+      avatarUrl: null,
       createdAt: new Date().toISOString(),
     });
 
@@ -435,7 +527,9 @@ app.post("/auth/signup", async (req, res) => {
         name: user.name,
         email: user.email,
         walletInr: user.walletInr,
+        realWalletInr: Number(user.realWalletInr || 0),
         realizedPnlInr: Number(user.realizedPnlInr || 0),
+        avatarUrl: user.avatarUrl || null,
       },
     });
   } catch (error) {
@@ -455,17 +549,20 @@ app.post("/auth/login", async (req, res) => {
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ status: "error", message: "Invalid credentials" });
+    const normalizedUser = ensureUserFinancials(user);
 
-    const token = createToken(user);
+    const token = createToken(normalizedUser);
     return res.json({
       status: "ok",
       token,
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        walletInr: user.walletInr,
-        realizedPnlInr: Number(user.realizedPnlInr || 0),
+        id: normalizedUser.id,
+        name: normalizedUser.name,
+        email: normalizedUser.email,
+        walletInr: normalizedUser.walletInr,
+        realWalletInr: normalizedUser.realWalletInr,
+        realizedPnlInr: Number(normalizedUser.realizedPnlInr || 0),
+        avatarUrl: normalizedUser.avatarUrl || null,
       },
     });
   } catch (error) {
@@ -474,7 +571,7 @@ app.post("/auth/login", async (req, res) => {
 });
 
 app.get("/auth/me", authMiddleware, (req, res) => {
-  const user = req.user;
+  const user = ensureUserFinancials(req.user);
   res.json({
     status: "ok",
     user: {
@@ -482,7 +579,9 @@ app.get("/auth/me", authMiddleware, (req, res) => {
       name: user.name,
       email: user.email,
       walletInr: user.walletInr,
+      realWalletInr: Number(user.realWalletInr || 0),
       realizedPnlInr: Number(user.realizedPnlInr || 0),
+      avatarUrl: user.avatarUrl || null,
     },
   });
 });
@@ -539,6 +638,7 @@ app.get("/auth/google/callback", async (req, res) => {
       .toLowerCase();
     const name = String(profile.name || profile.given_name || email.split("@")[0] || "User").trim();
     const sub = String(profile.sub || "");
+    const avatarUrl = String(profile.picture || "").trim() || null;
     if (!email) throw new Error("Google did not return an email");
 
     let user = getUserByEmail(email);
@@ -551,11 +651,13 @@ app.get("/auth/google/callback", async (req, res) => {
         passwordHash,
         googleSub: sub,
         walletInr: defaultWalletBalance,
+        realWalletInr: 0,
         realizedPnlInr: 0,
+        avatarUrl,
         createdAt: new Date().toISOString(),
       });
     } else if (sub) {
-      const linked = updateUser(user.id, (prev) => ({ ...prev, googleSub: sub }));
+      const linked = updateUser(user.id, (prev) => ({ ...prev, googleSub: sub, avatarUrl: prev.avatarUrl || avatarUrl }));
       if (linked) user = linked;
     }
 
@@ -588,6 +690,276 @@ app.post("/wallet/reset", authMiddleware, (req, res) => {
     status: "ok",
     walletInr: updated.walletInr,
     formatted: `₹${Number(updated.walletInr).toLocaleString("en-IN")}`,
+  });
+});
+
+app.post("/payments/razorpay/order", authMiddleware, async (req, res) => {
+  try {
+    if (!razorpay || !razorpayKeyId) {
+      return res.status(503).json({ status: "error", message: "Razorpay not configured" });
+    }
+    const amountInr = Number(req.body?.amountInr || 0);
+    if (!Number.isFinite(amountInr) || amountInr <= 0) {
+      return res.status(400).json({ status: "error", message: "amountInr must be positive" });
+    }
+    const amountPaise = Math.round(amountInr * 100);
+    const order = await razorpay.orders.create({
+      amount: amountPaise,
+      currency: "INR",
+      receipt: `rw_${req.user.id.slice(0, 8)}_${Date.now()}`,
+      notes: {
+        userId: req.user.id,
+        userEmail: req.user.email,
+      },
+    });
+    return res.json({
+      status: "ok",
+      order: {
+        id: order.id,
+        amount: order.amount,
+        currency: order.currency,
+      },
+      keyId: razorpayKeyId,
+    });
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: e?.message || "Could not create payment order" });
+  }
+});
+
+app.post("/payments/razorpay/verify", authMiddleware, (req, res) => {
+  try {
+    if (!razorpayKeySecret) {
+      return res.status(503).json({ status: "error", message: "Razorpay not configured" });
+    }
+    const orderId = String(req.body?.razorpay_order_id || "");
+    const paymentId = String(req.body?.razorpay_payment_id || "");
+    const signature = String(req.body?.razorpay_signature || "");
+    const amountInr = Number(req.body?.amountInr || 0);
+    if (!orderId || !paymentId || !signature || !(amountInr > 0)) {
+      return res.status(400).json({ status: "error", message: "Invalid payment payload" });
+    }
+    const expected = createHmac("sha256", razorpayKeySecret)
+      .update(`${orderId}|${paymentId}`)
+      .digest("hex");
+    if (expected !== signature) {
+      return res.status(400).json({ status: "error", message: "Invalid payment signature" });
+    }
+
+    const user = ensureUserFinancials(req.user);
+    const alreadyCredited = user.walletPayments.some((p) => p.paymentId === paymentId);
+    if (alreadyCredited) {
+      return res.json({ status: "ok", realWalletInr: user.realWalletInr, duplicate: true });
+    }
+
+    const updated = updateUser(req.user.id, (prev) => {
+      const normalized = ensureUserFinancials(prev);
+      return {
+        ...normalized,
+        realWalletInr: Number((normalized.realWalletInr + amountInr).toFixed(2)),
+        walletPayments: [
+          ...normalized.walletPayments,
+          {
+            id: randomUUID(),
+            amountInr: Number(amountInr.toFixed(2)),
+            orderId,
+            paymentId,
+            signature,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    if (!updated) return res.status(404).json({ status: "error", message: "User not found" });
+    return res.json({ status: "ok", realWalletInr: Number(updated.realWalletInr || 0) });
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: e?.message || "Payment verification failed" });
+  }
+});
+
+app.post("/wallet/real/add", authMiddleware, (req, res) => {
+  const amount = Number(req.body?.amount || 0);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ status: "error", message: "amount must be positive" });
+  }
+  const updated = updateUser(req.user.id, (prev) => ({
+    ...prev,
+    realWalletInr: Number((Number(prev.realWalletInr || 0) + amount).toFixed(2)),
+    updatedAt: new Date().toISOString(),
+  }));
+  if (!updated) return res.status(404).json({ status: "error", message: "User not found" });
+  return res.json({
+    status: "ok",
+    realWalletInr: Number(updated.realWalletInr || 0),
+  });
+});
+
+app.post("/wallet/withdraw/request", authMiddleware, (req, res) => {
+  const amountInr = Number(req.body?.amountInr || 0);
+  if (!Number.isFinite(amountInr) || amountInr <= 0) {
+    return res.status(400).json({ status: "error", message: "amountInr must be positive" });
+  }
+  const user = ensureUserFinancials(req.user);
+  if (user.realWalletInr < amountInr) {
+    return res.status(400).json({ status: "error", message: "Insufficient real balance" });
+  }
+  const requestId = randomUUID();
+  const updated = updateUser(req.user.id, (prev) => {
+    const normalized = ensureUserFinancials(prev);
+    return {
+      ...normalized,
+      realWalletInr: Number((normalized.realWalletInr - amountInr).toFixed(2)),
+      withdrawalRequests: [
+        ...normalized.withdrawalRequests,
+        {
+          id: requestId,
+          amountInr: Number(amountInr.toFixed(2)),
+          status: "PENDING",
+          requestedAt: new Date().toISOString(),
+        },
+      ],
+      updatedAt: new Date().toISOString(),
+    };
+  });
+  return res.json({
+    status: "ok",
+    requestId,
+    realWalletInr: Number(updated?.realWalletInr || 0),
+  });
+});
+
+app.get("/wallet/withdraw/requests", authMiddleware, (req, res) => {
+  const u = ensureUserFinancials(req.user);
+  return res.json({ status: "ok", requests: u.withdrawalRequests || [] });
+});
+
+app.patch("/auth/profile", authMiddleware, (req, res) => {
+  const nextName = req.body?.name != null ? String(req.body.name).trim() : null;
+  const nextAvatar = req.body?.avatarUrl != null ? String(req.body.avatarUrl).trim() : null;
+  if (nextName !== null && nextName.length === 0) {
+    return res.status(400).json({ status: "error", message: "name cannot be empty" });
+  }
+  const updated = updateUser(req.user.id, (prev) => ({
+    ...prev,
+    ...(nextName !== null ? { name: nextName } : {}),
+    ...(nextAvatar !== null ? { avatarUrl: nextAvatar || null } : {}),
+    updatedAt: new Date().toISOString(),
+  }));
+  if (!updated) return res.status(404).json({ status: "error", message: "User not found" });
+  return res.json({
+    status: "ok",
+    user: {
+      id: updated.id,
+      name: updated.name,
+      email: updated.email,
+      walletInr: Number(updated.walletInr || 0),
+      realWalletInr: Number(updated.realWalletInr || 0),
+      realizedPnlInr: Number(updated.realizedPnlInr || 0),
+      avatarUrl: updated.avatarUrl || null,
+    },
+  });
+});
+
+app.get("/contest/current", authMiddleware, (req, res) => {
+  const contest = currentContestOrCreate();
+  const uid = req.user.id;
+  const joined = Array.isArray(contest.participants) && contest.participants.some((p) => p.userId === uid);
+  return res.json({
+    status: "ok",
+    contest,
+    joined,
+    realWalletInr: Number(req.user.realWalletInr || 0),
+  });
+});
+
+app.post("/contest/join", authMiddleware, (req, res) => {
+  const contest = currentContestOrCreate();
+  if (contest.status !== "OPEN") {
+    return res.status(400).json({ status: "error", message: "Contest is not open" });
+  }
+  const already = Array.isArray(contest.participants) && contest.participants.some((p) => p.userId === req.user.id);
+  if (already) return res.json({ status: "ok", contest, joined: true });
+  if ((contest.participants?.length || 0) >= Number(contest.maxParticipants || maxContestParticipants)) {
+    return res.status(400).json({ status: "error", message: "Contest is full" });
+  }
+  const fee = Number(contest.entryFeeInr || defaultContestFeeInr);
+  const currentReal = Number(req.user.realWalletInr || 0);
+  if (currentReal < fee) {
+    return res.status(400).json({ status: "error", message: "Insufficient real balance" });
+  }
+  const updatedUser = updateUser(req.user.id, (prev) => ({
+    ...prev,
+    realWalletInr: Number((Number(prev.realWalletInr || 0) - fee).toFixed(2)),
+    updatedAt: new Date().toISOString(),
+  }));
+  if (!updatedUser) return res.status(404).json({ status: "error", message: "User not found" });
+  const updatedContest = upsertContest(contest.id, (prev) => ({
+    ...prev,
+    participants: [...(prev?.participants || []), { userId: req.user.id, joinedAt: new Date().toISOString() }],
+    updatedAt: new Date().toISOString(),
+  }));
+  return res.json({
+    status: "ok",
+    contest: updatedContest,
+    realWalletInr: Number(updatedUser.realWalletInr || 0),
+  });
+});
+
+app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
+  const contest = currentContestOrCreate();
+  const participants = Array.isArray(contest.participants) ? contest.participants : [];
+  const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id));
+  let quotes = {};
+  if (auth.accessToken) {
+    try {
+      kite.setAccessToken(auth.accessToken);
+      const symbols = [];
+      for (const u of users) {
+        for (const p of u.positions || []) {
+          const qty = Number(p?.quantity || 0);
+          const avg = Number(p?.avgPrice || 0);
+          if (!(qty > 0 && avg > 0)) continue;
+          const k = resolveKiteSymbolFromPosition(p);
+          if (k) symbols.push(k);
+        }
+      }
+      const uniq = [...new Set(symbols)];
+      if (uniq.length) quotes = await kite.getQuote(uniq);
+    } catch {
+      // keep fallback with realized-only
+    }
+  }
+  const leaderboard = users
+    .map((u) => {
+      const realized = Number(u.realizedPnlInr || 0);
+      let open = 0;
+      for (const p of u.positions || []) {
+        const qty = Number(p?.quantity || 0);
+        const avg = Number(p?.avgPrice || 0);
+        if (!(qty > 0 && avg > 0)) continue;
+        const k = resolveKiteSymbolFromPosition(p);
+        const q = k ? quotes?.[k] : null;
+        const lp = Number(q?.last_price ?? q?.lastPrice ?? q?.ltp ?? q?.last ?? 0);
+        if (Number.isFinite(lp) && lp > 0) open += (lp - avg) * qty;
+      }
+      const total = Number((realized + open).toFixed(2));
+      return {
+        userId: u.id,
+        name: u.name,
+        email: u.email,
+        avatarUrl: u.avatarUrl || null,
+        totalPnlInr: total,
+      };
+    })
+    .sort((a, b) => b.totalPnlInr - a.totalPnlInr)
+    .map((r, idx) => ({ ...r, rank: idx + 1 }));
+  const me = leaderboard.find((x) => x.userId === req.user.id) || null;
+  return res.json({
+    status: "ok",
+    contest,
+    leaderboard,
+    myRank: me?.rank || null,
+    participantCount: participants.length,
   });
 });
 
@@ -647,11 +1019,161 @@ app.get("/admin/users", authMiddleware, ensureAdmin, (req, res) => {
       name: u.name,
       email: u.email,
       walletInr: Number(u.walletInr ?? 0),
+      realWalletInr: Number(u.realWalletInr ?? 0),
       realizedPnlInr: Number(u.realizedPnlInr ?? 0),
       createdAt: u.createdAt,
       ordersCount: Array.isArray(u.orders) ? u.orders.length : 0,
       positionsCount: Array.isArray(u.positions) ? u.positions.length : 0,
     })),
+  });
+});
+
+app.get("/admin/withdrawals", authMiddleware, ensureAdmin, (req, res) => {
+  const users = getAllUsers();
+  const rows = [];
+  for (const u of users) {
+    const requests = Array.isArray(u.withdrawalRequests) ? u.withdrawalRequests : [];
+    for (const r of requests) {
+      rows.push({
+        userId: u.id,
+        userEmail: u.email,
+        userName: u.name,
+        ...r,
+      });
+    }
+  }
+  rows.sort((a, b) => Date.parse(b.requestedAt || "") - Date.parse(a.requestedAt || ""));
+  return res.json({ status: "ok", withdrawals: rows });
+});
+
+app.post("/admin/withdrawals/:userId/:requestId/approve", authMiddleware, ensureAdmin, (req, res) => {
+  const { userId, requestId } = req.params;
+  const target = getUserById(userId);
+  if (!target) return res.status(404).json({ status: "error", message: "User not found" });
+  const updated = updateUser(userId, (prev) => {
+    const normalized = ensureUserFinancials(prev);
+    const requests = normalized.withdrawalRequests.map((r) =>
+      r.id === requestId && r.status === "PENDING"
+        ? { ...r, status: "APPROVED", reviewedAt: new Date().toISOString() }
+        : r,
+    );
+    return { ...normalized, withdrawalRequests: requests, updatedAt: new Date().toISOString() };
+  });
+  return res.json({ status: "ok", requests: updated?.withdrawalRequests || [] });
+});
+
+app.post("/admin/withdrawals/:userId/:requestId/reject", authMiddleware, ensureAdmin, (req, res) => {
+  const { userId, requestId } = req.params;
+  const target = getUserById(userId);
+  if (!target) return res.status(404).json({ status: "error", message: "User not found" });
+  const updated = updateUser(userId, (prev) => {
+    const normalized = ensureUserFinancials(prev);
+    let nextBalance = normalized.realWalletInr;
+    const requests = normalized.withdrawalRequests.map((r) => {
+      if (r.id !== requestId || r.status !== "PENDING") return r;
+      nextBalance = Number((nextBalance + Number(r.amountInr || 0)).toFixed(2));
+      return { ...r, status: "REJECTED", reviewedAt: new Date().toISOString() };
+    });
+    return { ...normalized, realWalletInr: nextBalance, withdrawalRequests: requests, updatedAt: new Date().toISOString() };
+  });
+  return res.json({ status: "ok", requests: updated?.withdrawalRequests || [] });
+});
+
+app.get("/admin/contest/current", authMiddleware, ensureAdmin, (req, res) => {
+  const contest = currentContestOrCreate();
+  return res.json({ status: "ok", contest });
+});
+
+app.post("/admin/contest/config", authMiddleware, ensureAdmin, (req, res) => {
+  const contest = currentContestOrCreate();
+  const entryFeeInr = Number(req.body?.entryFeeInr ?? contest.entryFeeInr);
+  const maxParticipants = Number(req.body?.maxParticipants ?? contest.maxParticipants);
+  const minParticipants = Number(req.body?.minParticipants ?? contest.minParticipants);
+  const first = Number(req.body?.firstPrizeInr ?? contest.prizePoolInr?.first ?? 10000);
+  const second = Number(req.body?.secondPrizeInr ?? contest.prizePoolInr?.second ?? 5000);
+  const third = Number(req.body?.thirdPrizeInr ?? contest.prizePoolInr?.third ?? 2000);
+  const updated = upsertContest(contest.id, (prev) => ({
+    ...prev,
+    entryFeeInr: Number.isFinite(entryFeeInr) && entryFeeInr > 0 ? entryFeeInr : prev.entryFeeInr,
+    maxParticipants: Number.isFinite(maxParticipants) && maxParticipants > 0 ? maxParticipants : prev.maxParticipants,
+    minParticipants: Number.isFinite(minParticipants) && minParticipants > 0 ? minParticipants : prev.minParticipants,
+    prizePoolInr: {
+      first: Number.isFinite(first) ? first : prev.prizePoolInr?.first ?? 10000,
+      second: Number.isFinite(second) ? second : prev.prizePoolInr?.second ?? 5000,
+      third: Number.isFinite(third) ? third : prev.prizePoolInr?.third ?? 2000,
+    },
+    updatedAt: new Date().toISOString(),
+  }));
+  return res.json({ status: "ok", contest: updated });
+});
+
+app.post("/admin/contest/finalize", authMiddleware, ensureAdmin, async (req, res) => {
+  const contest = currentContestOrCreate();
+  if (contest.status === "FINALIZED") {
+    return res.json({ status: "ok", contest });
+  }
+  const participants = contest.participants || [];
+  if (participants.length < Number(contest.minParticipants || minContestParticipants)) {
+    return res.status(400).json({
+      status: "error",
+      message: `Minimum ${Number(contest.minParticipants || minContestParticipants)} participants required`,
+    });
+  }
+
+  const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id));
+  const ranking = users
+    .map((u) => ({
+      userId: u.id,
+      totalPnlInr: Number(u.realizedPnlInr || 0),
+    }))
+    .sort((a, b) => b.totalPnlInr - a.totalPnlInr);
+
+  const winners = ranking.slice(0, 3);
+  const payouts = winners.map((w, idx) => ({
+    userId: w.userId,
+    rank: idx + 1,
+    amountInr: idx === 0 ? Number(contest.prizePoolInr?.first || 10000) : idx === 1 ? Number(contest.prizePoolInr?.second || 5000) : Number(contest.prizePoolInr?.third || 2000),
+    status: "PENDING",
+    createdAt: new Date().toISOString(),
+  }));
+
+  const updated = upsertContest(contest.id, (prev) => ({
+    ...prev,
+    status: "FINALIZED",
+    finalizedAt: new Date().toISOString(),
+    payouts,
+    updatedAt: new Date().toISOString(),
+  }));
+  return res.json({ status: "ok", contest: updated });
+});
+
+app.post("/admin/contest/release", authMiddleware, ensureAdmin, (req, res) => {
+  const contest = currentContestOrCreate();
+  const userId = String(req.body?.userId || "");
+  const updated = upsertContest(contest.id, (prev) => {
+    const payouts = (prev.payouts || []).map((p) =>
+      p.userId === userId && p.status === "PENDING"
+        ? { ...p, status: "RELEASED", releasedAt: new Date().toISOString() }
+        : p,
+    );
+    return { ...prev, payouts, updatedAt: new Date().toISOString() };
+  });
+  const payout = (updated.payouts || []).find((p) => p.userId === userId);
+  if (!payout) return res.status(404).json({ status: "error", message: "Payout not found" });
+  if (payout.status !== "RELEASED") {
+    return res.status(400).json({ status: "error", message: "Payout not released" });
+  }
+  const u = getUserById(userId);
+  if (!u) return res.status(404).json({ status: "error", message: "User not found" });
+  const credited = updateUser(userId, (prev) => ({
+    ...prev,
+    realWalletInr: Number((Number(prev.realWalletInr || 0) + Number(payout.amountInr || 0)).toFixed(2)),
+    updatedAt: new Date().toISOString(),
+  }));
+  return res.json({
+    status: "ok",
+    contest: updated,
+    user: credited ? { id: credited.id, realWalletInr: Number(credited.realWalletInr || 0) } : null,
   });
 });
 
@@ -695,6 +1217,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
         name: u.name,
         email: u.email,
         walletInr: Number(u.walletInr ?? 0),
+        realWalletInr: Number(u.realWalletInr ?? 0),
         realizedPnlInr: Number(u.realizedPnlInr ?? 0),
         openPnlInr: 0,
         totalPnlInr: Number(u.realizedPnlInr ?? 0),
@@ -730,6 +1253,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
           name: u.name,
           email: u.email,
           walletInr: Number(u.walletInr ?? 0),
+          realWalletInr: Number(u.realWalletInr ?? 0),
           realizedPnlInr: Number(u.realizedPnlInr ?? 0),
           openPnlInr: 0,
           totalPnlInr: Number(u.realizedPnlInr ?? 0),
@@ -760,6 +1284,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
           name: u.name,
           email: u.email,
           walletInr: Number(u.walletInr ?? 0),
+          realWalletInr: Number(u.realWalletInr ?? 0),
           realizedPnlInr: realized,
           openPnlInr: open,
           totalPnlInr: Number((realized + open).toFixed(2)),
@@ -836,6 +1361,12 @@ app.post("/paper/position/close", authMiddleware, (req, res) => {
 
 app.post("/paper/order", authMiddleware, (req, res) => {
   try {
+    if (!isWithinMarketHoursIST()) {
+      return res.status(400).json({
+        status: "error",
+        message: "Order not allowed outside market hours (9:15 AM - 3:30 PM IST)",
+      });
+    }
     const {
       symbol,
       side,

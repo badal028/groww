@@ -19,14 +19,37 @@ type DailySignupRow = {
   signups: { id: string; email: string }[];
 };
 
+type Contest = {
+  id: string;
+  contestDateISO: string;
+  entryFeeInr: number;
+  minParticipants: number;
+  maxParticipants: number;
+  status: string;
+  participants: { userId: string; joinedAt: string }[];
+  prizePoolInr: { first: number; second: number; third: number };
+  payouts?: { userId: string; rank: number; amountInr: number; status: string }[];
+};
+
 type AdminUserPnl = {
   id: string;
   name: string;
   email: string;
   walletInr: number;
+  realWalletInr?: number;
   realizedPnlInr: number;
   openPnlInr: number;
   totalPnlInr: number;
+};
+
+type WithdrawalRow = {
+  userId: string;
+  userEmail: string;
+  userName: string;
+  id: string;
+  amountInr: number;
+  status: string;
+  requestedAt: string;
 };
 
 type PaperOrder = {
@@ -69,6 +92,8 @@ export default function AdminPage() {
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [dailyRows, setDailyRows] = useState<DailySignupRow[]>([]);
   const [users, setUsers] = useState<AdminUserPnl[]>([]);
+  const [contest, setContest] = useState<Contest | null>(null);
+  const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -95,24 +120,32 @@ export default function AdminPage() {
       try {
         setLoading(true);
         setErr(null);
-        const [sRes, dRes, uRes] = await Promise.all([
+        const [sRes, dRes, uRes, cRes, wRes] = await Promise.all([
           fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/signups/daily?days=14`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/users/pnl`, { headers: authHeaders }),
+          fetch(`${apiBase}/admin/contest/current`, { headers: authHeaders }),
+          fetch(`${apiBase}/admin/withdrawals`, { headers: authHeaders }),
         ]);
 
         if (!sRes.ok) throw new Error(await sRes.text().catch(() => "Summary fetch failed"));
         if (!dRes.ok) throw new Error(await dRes.text().catch(() => "Daily signups fetch failed"));
         if (!uRes.ok) throw new Error(await uRes.text().catch(() => "Users fetch failed"));
+        if (!cRes.ok) throw new Error(await cRes.text().catch(() => "Contest fetch failed"));
+        if (!wRes.ok) throw new Error(await wRes.text().catch(() => "Withdrawals fetch failed"));
 
         const sData = await sRes.json();
         const dData = await dRes.json();
         const uData = await uRes.json();
+        const cData = await cRes.json();
+        const wData = await wRes.json();
 
         if (cancelled) return;
         setSummary(sData?.signupsTodayCount != null ? sData : null);
         setDailyRows(Array.isArray(dData?.rows) ? dData.rows : []);
         setUsers(Array.isArray(uData?.users) ? uData.users : []);
+        setContest(cData?.contest || null);
+        setWithdrawals(Array.isArray(wData?.withdrawals) ? wData.withdrawals : []);
         if (!selectedUserId && Array.isArray(uData?.users) && uData.users.length > 0) {
           setSelectedUserId(uData.users[0].id);
         }
@@ -232,6 +265,119 @@ export default function AdminPage() {
             </table>
           </div>
 
+          {contest && (
+            <div className="mb-4 rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold">Pro-League control</div>
+                  <div className="text-xs text-muted-foreground">
+                    {contest.contestDateISO} · {contest.status} · {contest.participants?.length || 0}/{contest.maxParticipants}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-md border border-border px-3 py-1 text-xs"
+                  onClick={async () => {
+                    const r = await fetch(`${apiBase}/admin/contest/finalize`, { method: "POST", headers: authHeaders });
+                    const d = await r.json().catch(() => ({}));
+                    if (!r.ok) return setErr(d?.message || "Finalize failed");
+                    setContest(d?.contest || null);
+                  }}
+                >
+                  Finalize winners
+                </button>
+              </div>
+
+              {!!contest.payouts?.length && (
+                <div className="mt-3 space-y-2">
+                  {contest.payouts.map((p) => (
+                    <div key={`${p.userId}-${p.rank}`} className="flex items-center justify-between rounded border border-border px-3 py-2 text-xs">
+                      <span>Rank #{p.rank} · {p.userId.slice(0, 8)} · ₹{p.amountInr}</span>
+                      {p.status === "RELEASED" ? (
+                        <span className="text-profit">Released</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="rounded bg-primary px-2 py-1 text-primary-foreground"
+                          onClick={async () => {
+                            const r = await fetch(`${apiBase}/admin/contest/release`, {
+                              method: "POST",
+                              headers: { ...authHeaders, "Content-Type": "application/json" },
+                              body: JSON.stringify({ userId: p.userId }),
+                            });
+                            const d = await r.json().catch(() => ({}));
+                            if (!r.ok) return setErr(d?.message || "Release failed");
+                            setContest(d?.contest || null);
+                          }}
+                        >
+                          Release
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mb-4 rounded-xl border border-border bg-card p-4">
+            <div className="text-sm font-semibold">Withdrawal requests</div>
+            <div className="mt-3 space-y-2">
+              {withdrawals.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No requests</div>
+              ) : withdrawals.map((w) => (
+                <div key={`${w.userId}-${w.id}`} className="flex items-center justify-between rounded border border-border px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-semibold text-foreground">{w.userName} · {w.userEmail}</div>
+                    <div className="text-[11px] text-muted-foreground">₹{Number(w.amountInr).toFixed(2)} · {w.status}</div>
+                  </div>
+                  {w.status === "PENDING" ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="rounded bg-primary px-2 py-1 text-[11px] text-primary-foreground"
+                        onClick={async () => {
+                          const res = await fetch(`${apiBase}/admin/withdrawals/${w.userId}/${w.id}/approve`, {
+                            method: "POST",
+                            headers: authHeaders,
+                          });
+                          const d = await res.json().catch(() => ({}));
+                          if (!res.ok) return setErr(d?.message || "Approve failed");
+                          setWithdrawals((prev) =>
+                            prev.map((x) => (x.id === w.id && x.userId === w.userId ? { ...x, status: "APPROVED" } : x)),
+                          );
+                        }}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-border px-2 py-1 text-[11px]"
+                        onClick={async () => {
+                          const res = await fetch(`${apiBase}/admin/withdrawals/${w.userId}/${w.id}/reject`, {
+                            method: "POST",
+                            headers: authHeaders,
+                          });
+                          const d = await res.json().catch(() => ({}));
+                          if (!res.ok) return setErr(d?.message || "Reject failed");
+                          setWithdrawals((prev) =>
+                            prev.map((x) => (x.id === w.id && x.userId === w.userId ? { ...x, status: "REJECTED" } : x)),
+                          );
+                        }}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  ) : (
+                    <span className={cn("text-xs font-medium", w.status === "APPROVED" ? "text-profit" : "text-muted-foreground")}>
+                      {w.status}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
             <div className="lg:col-span-5">
               <div className="rounded-xl border border-border bg-card p-3">
@@ -250,6 +396,7 @@ export default function AdminPage() {
                       <div className="min-w-0">
                         <div className="truncate text-sm font-semibold">{u.name}</div>
                         <div className="truncate text-xs text-muted-foreground">{u.email}</div>
+                        <div className="truncate text-[11px] text-muted-foreground">Real ₹{Number(u.realWalletInr ?? 0).toFixed(2)}</div>
                       </div>
                       <div
                         className={cn(

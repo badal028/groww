@@ -15,7 +15,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { PAPER_POSITIONS_REFRESH_EVENT } from "@/hooks/usePaperTrading";
 import { toast } from "sonner";
 import SwipeRevealExit from "@/components/SwipeRevealExit";
-import { showPositionExitToast } from "@/utils/tradingToasts";
+import { formatFoOrderDescriptionLine, showPositionExitToast } from "@/utils/tradingToasts";
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
 
@@ -123,7 +123,12 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
         if (!res.ok) throw new Error(data?.message || "Could not exit position");
         await refreshMe();
         window.dispatchEvent(new Event(PAPER_POSITIONS_REFRESH_EVENT));
-        showPositionExitToast();
+        const line = Number(data?.lineRealized ?? 0);
+        const detail =
+          p.instrumentType === "FO" && p.expiry && p.strike != null && p.optionType
+            ? formatFoOrderDescriptionLine(p.symbol, p.expiry, p.strike, p.optionType, p.quantity, "qty closed.")
+            : `${p.symbol} · ${Math.round(p.quantity)} / ${Math.round(p.quantity)} qty closed.`;
+        showPositionExitToast(detail, `Realized ${formatPnl(line)}`);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Exit failed");
       } finally {
@@ -152,7 +157,7 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
         </p>
         <p
           className={cn(
-            "mt-1 text-[15px] font-bold tabular-nums leading-none tracking-tight lg:text-[14px]",
+            "mt-1 text-[20px] font-bold tabular-nums leading-none tracking-tight lg:text-[1.75rem]",
             totalPnl >= 0 ? "text-profit" : "text-loss",
           )}
         >
@@ -262,7 +267,7 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
                 </p>
                 <p
                   className={cn(
-                    "shrink-0 text-[12px] font-semibold tabular-nums leading-none",
+                    "shrink-0 text-base font-semibold tabular-nums leading-none lg:text-lg",
                     pnl >= 0 ? "text-profit" : "text-loss",
                   )}
                 >

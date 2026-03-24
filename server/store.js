@@ -16,10 +16,11 @@ const readDb = () => {
   try {
     const raw = readFileSync(DB_FILE, "utf-8");
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed?.users)) return { users: [] };
-    return parsed;
+    const users = Array.isArray(parsed?.users) ? parsed.users : [];
+    const contests = Array.isArray(parsed?.contests) ? parsed.contests : [];
+    return { users, contests };
   } catch {
-    return { users: [] };
+    return { users: [], contests: [] };
   }
 };
 
@@ -57,4 +58,33 @@ export const updateUser = (id, updater) => {
 export const getAllUsers = () => {
   const db = readDb();
   return Array.isArray(db?.users) ? db.users : [];
+};
+
+export const getAllContests = () => {
+  const db = readDb();
+  return Array.isArray(db?.contests) ? db.contests : [];
+};
+
+export const upsertContest = (contestId, updater) => {
+  const db = readDb();
+  const contests = Array.isArray(db.contests) ? [...db.contests] : [];
+  const idx = contests.findIndex((c) => c.id === contestId);
+  if (idx === -1) {
+    contests.push(updater(null));
+  } else {
+    contests[idx] = updater(contests[idx]);
+  }
+  db.contests = contests;
+  writeDb(db);
+  return db.contests.find((c) => c.id === contestId) || null;
+};
+
+export const readAllData = () => {
+  return readDb();
+};
+
+export const writeAllData = (nextDb) => {
+  const users = Array.isArray(nextDb?.users) ? nextDb.users : [];
+  const contests = Array.isArray(nextDb?.contests) ? nextDb.contests : [];
+  writeDb({ users, contests });
 };

@@ -4,6 +4,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { showOrderExecutedToast } from "@/utils/tradingToasts";
+import { formatFoOrderDescriptionLine } from "@/utils/tradingToasts";
 import { usePaperTrading } from "@/hooks/usePaperTrading";
 import { useAuth } from "@/hooks/useAuth";
 import { isValidEquityQty } from "@/utils/equityLots";
@@ -142,11 +143,37 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
     autoFilledRef.current = false;
   }, [open, contract?.id, side, priceField, isMarketOrder]);
 
+  const nowIstMeta = useMemo(() => {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(now);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value || "00";
+    const dayIso = `${get("year")}-${get("month")}-${get("day")}`;
+    const minutes = Number(get("hour")) * 60 + Number(get("minute"));
+    return { dayIso, minutes };
+  }, [open, contract?.id, liveLtp, priceField]);
+
+  const isMarketHours = useMemo(() => {
+    const mins = nowIstMeta.minutes;
+    return mins >= 9 * 60 + 15 && mins <= 15 * 60 + 30;
+  }, [nowIstMeta.minutes]);
+
   const isExpired = useMemo(() => {
     if (!contract) return false;
-    const exp = new Date(contract.expiry).getTime();
-    return exp < Date.now();
-  }, [contract]);
+    // Contract expires only after market close on expiry day (IST), not at 00:00.
+    const exp = String(contract.expiry || "").slice(0, 10);
+    if (!exp) return false;
+    if (nowIstMeta.dayIso > exp) return true;
+    if (nowIstMeta.dayIso < exp) return false;
+    return nowIstMeta.minutes > 15 * 60 + 30;
+  }, [contract, nowIstMeta]);
 
   const headerTitle = contract
     ? `${contract.underlyingSymbol} ${new Date(contract.expiry).toDateString()} ${contract.strike} ${contract.optionType}`
@@ -203,6 +230,10 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
       toast.error("Trading is not allowed for expired contracts");
       return false;
     }
+    if (!isMarketHours) {
+      toast.error("Order not allowed outside market hours (9:15 AM - 3:30 PM IST)");
+      return false;
+    }
     if (!qtyValid) {
       toast.error(`Quantity must be in multiples of ${lotSize}`);
       return false;
@@ -255,7 +286,15 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
       toast.error(result.message || "Order failed");
       return false;
     }
-    showOrderExecutedToast(side);
+    showOrderExecutedToast(
+      formatFoOrderDescriptionLine(
+        contract.underlyingSymbol,
+        contract.expiry,
+        contract.strike,
+        contract.optionType,
+        qtyNum,
+      ),
+    );
     onOpenChange(false);
     navigate("/stocks?tab=Positions");
     return true;
@@ -265,6 +304,7 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
     qtyValid,
     lotSize,
     side,
+    isMarketHours,
     qtyNum,
     priceField,
     onOpenChange,
@@ -431,6 +471,11 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
           Trading is not allowed for expired contracts
         </div>
       )}
+      {!isExpired && !isMarketHours && (
+        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm font-medium text-amber-700 dark:text-amber-400">
+          Order not allowed outside market hours (9:15 AM - 3:30 PM IST)
+        </div>
+      )}
 
       <div className="mt-4 flex items-start justify-between gap-3 text-xs">
         <div>
@@ -455,7 +500,7 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
         type="button"
         onClick={onTrade}
         disabled={
-          placing || isExpired || !qtyValid || (side === "BUY" && insufficientBuy)
+          placing || isExpired || !isMarketHours || !qtyValid || (side === "BUY" && insufficientBuy)
         }
         className={cn(
           "mt-4 h-11 w-full rounded-lg font-semibold text-primary-foreground disabled:opacity-60",

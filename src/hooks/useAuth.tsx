@@ -5,6 +5,8 @@ type AuthUser = {
   name: string;
   email: string;
   walletInr: number;
+  realWalletInr: number;
+  avatarUrl?: string | null;
   /** Cumulative realized P&L from exited paper positions (server). */
   realizedPnlInr: number;
 };
@@ -20,6 +22,8 @@ type AuthContextType = {
   signup: (payload: SignupPayload) => Promise<{ ok: boolean; message?: string }>;
   /** After Google OAuth redirect with JWT in URL hash. */
   applyAuthToken: (jwt: string) => Promise<{ ok: boolean; message?: string }>;
+  updateProfile: (payload: { name?: string; avatarUrl?: string }) => Promise<{ ok: boolean; message?: string }>;
+  addRealBalance: (amount: number) => Promise<{ ok: boolean; message?: string }>;
   logout: () => void;
   refreshMe: () => Promise<void>;
 };
@@ -28,6 +32,14 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const TOKEN_KEY = "paper_auth_token";
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
+
+const normalizeUser = (u: any): AuthUser => ({
+  ...u,
+  walletInr: Number(u?.walletInr ?? 0),
+  realWalletInr: Number(u?.realWalletInr ?? 0),
+  realizedPnlInr: Number(u?.realizedPnlInr ?? 0),
+  avatarUrl: u?.avatarUrl || null,
+});
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -48,11 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await res.json();
       const u = data.user;
       if (u && typeof u === "object") {
-        setUser({
-          ...u,
-          walletInr: Number(u.walletInr ?? 0),
-          realizedPnlInr: Number(u.realizedPnlInr ?? 0),
-        });
+        setUser(normalizeUser(u));
       } else {
         setUser(null);
       }
@@ -82,15 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(TOKEN_KEY, data.token);
       setToken(data.token);
       const u = data.user;
-      setUser(
-        u
-          ? {
-              ...u,
-              walletInr: Number(u.walletInr ?? 0),
-              realizedPnlInr: Number(u.realizedPnlInr ?? 0),
-            }
-          : null,
-      );
+      setUser(u ? normalizeUser(u) : null);
       return { ok: true };
     } catch {
       return { ok: false, message: "Unable to connect backend" };
@@ -113,11 +113,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(TOKEN_KEY, jwt);
       setToken(jwt);
       if (u && typeof u === "object") {
-        setUser({
-          ...u,
-          walletInr: Number(u.walletInr ?? 0),
-          realizedPnlInr: Number(u.realizedPnlInr ?? 0),
-        });
+        setUser(normalizeUser(u));
       }
       return { ok: true };
     } catch {
@@ -139,21 +135,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem(TOKEN_KEY, data.token);
         setToken(data.token);
         const u = data.user;
-        setUser(
-          u
-            ? {
-                ...u,
-                walletInr: Number(u.walletInr ?? 0),
-                realizedPnlInr: Number(u.realizedPnlInr ?? 0),
-              }
-            : null,
-        );
+        setUser(u ? normalizeUser(u) : null);
       }
       return { ok: true };
     } catch {
       return { ok: false, message: "Unable to connect backend" };
     }
   }, []);
+
+  const updateProfile = useCallback(async (payload: { name?: string; avatarUrl?: string }) => {
+    if (!token) return { ok: false, message: "Login required" };
+    try {
+      const res = await fetch(`${apiBase}/auth/profile`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, message: data?.message || "Profile update failed" };
+      if (data?.user) setUser(normalizeUser(data.user));
+      return { ok: true };
+    } catch {
+      return { ok: false, message: "Unable to connect backend" };
+    }
+  }, [token]);
+
+  const addRealBalance = useCallback(async (amount: number) => {
+    if (!token) return { ok: false, message: "Login required" };
+    try {
+      const res = await fetch(`${apiBase}/wallet/real/add`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ amount }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, message: data?.message || "Add money failed" };
+      await refreshMe();
+      return { ok: true };
+    } catch {
+      return { ok: false, message: "Unable to connect backend" };
+    }
+  }, [token, refreshMe]);
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
@@ -162,8 +190,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const value = useMemo(
-    () => ({ user, token, loading, login, signup, applyAuthToken, logout, refreshMe }),
-    [user, token, loading, login, signup, applyAuthToken, logout, refreshMe],
+    () => ({ user, token, loading, login, signup, applyAuthToken, updateProfile, addRealBalance, logout, refreshMe }),
+    [user, token, loading, login, signup, applyAuthToken, updateProfile, addRealBalance, logout, refreshMe],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
