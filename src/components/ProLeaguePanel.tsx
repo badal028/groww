@@ -20,7 +20,7 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
 
   return (
     <div className={cn("space-y-4", compact ? "px-0" : "")}>
-      <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-card via-card to-emerald-500/5 p-4 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">{contest.title}</p>
@@ -53,9 +53,9 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
         </div>
 
         <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-          <div className="rounded-lg bg-profit/10 px-2 py-2 text-profit">#1 {inr(contest.prizePoolInr.first)}</div>
-          <div className="rounded-lg bg-profit/10 px-2 py-2 text-profit">#2 {inr(contest.prizePoolInr.second)}</div>
-          <div className="rounded-lg bg-profit/10 px-2 py-2 text-profit">#3 {inr(contest.prizePoolInr.third)}</div>
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-2 text-emerald-600 dark:text-emerald-400">#1 {inr(contest.prizePoolInr.first)}</div>
+          <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-2 py-2 text-emerald-600 dark:text-emerald-400">#2 {inr(contest.prizePoolInr.second)}</div>
+          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-2 py-2 text-emerald-600 dark:text-emerald-400">#3 {inr(contest.prizePoolInr.third)}</div>
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-2">
@@ -77,7 +77,7 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <div className="border-b border-border px-4 py-3 text-sm font-semibold">Live leaderboard</div>
         {leaderboard.length === 0 ? (
           <div className="px-4 py-6 text-sm text-muted-foreground">No joined users yet.</div>
@@ -87,8 +87,8 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
               <div
                 key={row.userId}
                 className={cn(
-                  "flex items-center justify-between gap-3 px-4 py-3",
-                  row.rank <= 3 && "bg-profit/10",
+                  "flex items-center justify-between gap-3 px-4 py-3 transition-colors",
+                  row.rank <= 3 ? "bg-emerald-500/10" : "hover:bg-muted/30",
                 )}
               >
                 <div className="min-w-0">

@@ -136,7 +136,7 @@ const StocksPage: React.FC = () => {
 
         {/* Category Tabs */}
         <div
-          className="sticky top-[56px] z-40 flex gap-2 overflow-x-auto bg-background/95 px-4 pb-3 backdrop-blur lg:px-0 lg:py-2 scrollbar-hide"
+          className="flex gap-2 overflow-x-auto bg-background px-4 pb-3 lg:px-0 lg:py-2 scrollbar-hide"
         >
           {mobileTopTabs.map(cat => (
             <button

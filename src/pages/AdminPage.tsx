@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
@@ -207,6 +208,10 @@ export default function AdminPage() {
         Login required.
       </div>
     );
+  }
+
+  if (!isAdmin) {
+    return <Navigate to="/stocks" replace />;
   }
 
   return (

@@ -78,6 +78,15 @@ const isWithinMarketHoursIST = () => {
   return mins >= 9 * 60 + 15 && mins <= 15 * 60 + 30;
 };
 
+const pruneExitedPositionsBeforeToday = (positions) => {
+  const today = todayISOInIST();
+  return (Array.isArray(positions) ? positions : []).filter((p) => {
+    if (!p?.exited) return true;
+    const d = isoDateInIST(p?.exitedAt);
+    return d === today;
+  });
+};
+
 const nextContestDateISO = () => {
   const now = new Date();
   const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
@@ -416,7 +425,13 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      req.rawBody = buf?.toString?.() || "";
+    },
+  }),
+);
 
 const createToken = (user) =>
   jwt.sign({ sub: user.id, email: user.email }, jwtSecret, {
@@ -571,7 +586,13 @@ app.post("/auth/login", async (req, res) => {
 });
 
 app.get("/auth/me", authMiddleware, (req, res) => {
-  const user = ensureUserFinancials(req.user);
+  const pruned = pruneExitedPositionsBeforeToday(req.user.positions || []);
+  const persisted = updateUser(req.user.id, (prev) => ({
+    ...prev,
+    positions: pruned,
+    updatedAt: new Date().toISOString(),
+  }));
+  const user = ensureUserFinancials(persisted || req.user);
   res.json({
     status: "ok",
     user: {
@@ -777,6 +798,66 @@ app.post("/payments/razorpay/verify", authMiddleware, (req, res) => {
   }
 });
 
+/** Optional server-to-server reconciliation webhook from Razorpay. */
+app.post("/payments/razorpay/webhook", (req, res) => {
+  try {
+    if (!razorpayWebhookSecret) {
+      return res.status(503).json({ status: "error", message: "Webhook secret not configured" });
+    }
+    const signature = String(req.headers["x-razorpay-signature"] || "");
+    const raw = String(req.rawBody || "");
+    const expected = createHmac("sha256", razorpayWebhookSecret).update(raw).digest("hex");
+    if (!signature || signature !== expected) {
+      return res.status(400).json({ status: "error", message: "Invalid webhook signature" });
+    }
+
+    const event = req.body?.event;
+    const payment = req.body?.payload?.payment?.entity;
+    if (!payment?.id) return res.json({ status: "ok", ignored: true });
+    if (event !== "payment.captured" && event !== "order.paid") {
+      return res.json({ status: "ok", ignored: true, event });
+    }
+
+    const userId = String(payment?.notes?.userId || "");
+    const amountInr = Number(payment?.amount || 0) / 100;
+    const orderId = String(payment?.order_id || "");
+    const paymentId = String(payment?.id || "");
+    if (!userId || !(amountInr > 0) || !paymentId) {
+      return res.json({ status: "ok", ignored: true, reason: "missing user or amount" });
+    }
+
+    const user = getUserById(userId);
+    if (!user) return res.json({ status: "ok", ignored: true, reason: "user not found" });
+    const normalized = ensureUserFinancials(user);
+    const already = normalized.walletPayments.some((p) => p.paymentId === paymentId);
+    if (already) return res.json({ status: "ok", duplicate: true });
+
+    updateUser(userId, (prev) => {
+      const u = ensureUserFinancials(prev);
+      return {
+        ...u,
+        realWalletInr: Number((u.realWalletInr + amountInr).toFixed(2)),
+        walletPayments: [
+          ...u.walletPayments,
+          {
+            id: randomUUID(),
+            amountInr: Number(amountInr.toFixed(2)),
+            orderId,
+            paymentId,
+            signature,
+            createdAt: new Date().toISOString(),
+            via: "webhook",
+          },
+        ],
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    return res.json({ status: "ok" });
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: e?.message || "Webhook handling failed" });
+  }
+});
+
 app.post("/wallet/real/add", authMiddleware, (req, res) => {
   const amount = Number(req.body?.amount || 0);
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -969,7 +1050,13 @@ app.get("/paper/orders", authMiddleware, (req, res) => {
 });
 
 app.get("/paper/positions", authMiddleware, (req, res) => {
-  const positions = req.user.positions || [];
+  const pruned = pruneExitedPositionsBeforeToday(req.user.positions || []);
+  const persisted = updateUser(req.user.id, (prev) => ({
+    ...prev,
+    positions: pruned,
+    updatedAt: new Date().toISOString(),
+  }));
+  const positions = persisted?.positions || pruned;
   res.json({ status: "ok", positions });
 });
 
