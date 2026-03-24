@@ -390,9 +390,113 @@ const cashfreeAppId = process.env.CASHFREE_APP_ID;
 const cashfreeSecretKey = process.env.CASHFREE_SECRET_KEY;
 const cashfreeEnv = process.env.CASHFREE_ENV === "production" ? "production" : "sandbox";
 const cashfreeApiBase = cashfreeEnv === "production" ? "https://api.cashfree.com" : "https://sandbox.cashfree.com";
+const cashfreeApiVersion = process.env.CASHFREE_API_VERSION || "2022-01-01";
 const configuredNotifyUrl = String(process.env.CASHFREE_NOTIFY_URL || "").trim();
 const defaultNotifyUrl = `https://growwtrader.in/payments/cashfree/webhook`;
 const cashfreeNotifyUrl = configuredNotifyUrl.startsWith("https://") ? configuredNotifyUrl : defaultNotifyUrl;
+
+const isCashfreePaid = (value) => {
+  const v = String(value || "").trim().toUpperCase();
+  return v === "PAID" || v === "SUCCESS" || v === "ORDER_PAID" || v === "PAYMENT_SUCCESS";
+};
+
+const settleCashfreeOrderForUser = ({
+  userId,
+  orderId,
+  amountInr,
+  paid,
+  paymentId = "",
+  signature = "",
+}) => {
+  const user = getUserById(userId);
+  if (!user || !orderId) return null;
+
+  return updateUser(userId, (prev) => {
+    const normalized = ensureUserFinancials(prev);
+    const nextCashfreePayments = Array.isArray(normalized.cashfreePayments) ? [...normalized.cashfreePayments] : [];
+    const existingIdx = nextCashfreePayments.findIndex((p) => p.orderId === orderId);
+    const status = paid ? "PAID" : "FAILED";
+    const safeAmountInr = Number(Number(amountInr || 0).toFixed(2));
+
+    if (existingIdx >= 0) {
+      nextCashfreePayments[existingIdx] = {
+        ...nextCashfreePayments[existingIdx],
+        status,
+        updatedAt: new Date().toISOString(),
+      };
+    } else {
+      nextCashfreePayments.push({
+        orderId,
+        cashfreeOrderId: orderId,
+        amountInr: safeAmountInr,
+        status,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    let nextRealWallet = Number(normalized.realWalletInr || 0);
+    let nextWalletPayments = Array.isArray(normalized.walletPayments) ? [...normalized.walletPayments] : [];
+    if (paid && safeAmountInr > 0) {
+      const alreadyLogged = nextWalletPayments.some((p) => p.orderId === orderId && p.via === "cashfree");
+      if (!alreadyLogged) {
+        nextRealWallet = Number((nextRealWallet + safeAmountInr).toFixed(2));
+        nextWalletPayments.push({
+          id: randomUUID(),
+          amountInr: safeAmountInr,
+          orderId,
+          paymentId: String(paymentId || ""),
+          signature,
+          createdAt: new Date().toISOString(),
+          via: "cashfree",
+        });
+      }
+    }
+
+    return {
+      ...normalized,
+      realWalletInr: nextRealWallet,
+      walletPayments: nextWalletPayments,
+      cashfreePayments: nextCashfreePayments,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+};
+
+const fetchCashfreeOrderPaidStatus = async (orderId) => {
+  if (!cashfreeAppId || !cashfreeSecretKey) return { ok: false, paid: false };
+  const headers = {
+    "Content-Type": "application/json",
+    "x-client-id": cashfreeAppId,
+    "x-client-secret": cashfreeSecretKey,
+    "x-api-version": cashfreeApiVersion,
+  };
+
+  // 1) Order status endpoint
+  const orderRes = await fetch(`${cashfreeApiBase}/pg/orders/${encodeURIComponent(orderId)}`, { headers });
+  const orderData = await orderRes.json().catch(() => ({}));
+  if (orderRes.ok) {
+    const orderStatus = String(orderData?.order_status || orderData?.data?.order_status || "").toUpperCase();
+    const amountInr = Number(orderData?.order_amount || orderData?.data?.order_amount || 0);
+    if (isCashfreePaid(orderStatus)) return { ok: true, paid: true, amountInr };
+  }
+
+  // 2) Payments list endpoint fallback
+  const paymentsRes = await fetch(`${cashfreeApiBase}/pg/orders/${encodeURIComponent(orderId)}/payments`, { headers });
+  const paymentsData = await paymentsRes.json().catch(() => ({}));
+  if (!paymentsRes.ok) return { ok: false, paid: false };
+
+  const rows = Array.isArray(paymentsData) ? paymentsData : Array.isArray(paymentsData?.data) ? paymentsData.data : [];
+  for (const row of rows) {
+    const paymentStatus = String(row?.payment_status || row?.paymentStatus || "").toUpperCase();
+    if (isCashfreePaid(paymentStatus)) {
+      const amountInr = Number(row?.payment_amount || row?.order_amount || row?.amount || 0);
+      const paymentId = String(row?.cf_payment_id || row?.payment_id || "");
+      return { ok: true, paid: true, amountInr, paymentId };
+    }
+  }
+  return { ok: true, paid: false };
+};
 
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
 const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -868,7 +972,7 @@ app.post("/payments/cashfree/order", authMiddleware, async (req, res) => {
         "Content-Type": "application/json",
         "x-client-id": cashfreeAppId,
         "x-client-secret": cashfreeSecretKey,
-        "x-api-version": process.env.CASHFREE_API_VERSION || "2022-01-01",
+        "x-api-version": cashfreeApiVersion,
       },
       body: JSON.stringify(body),
     });
@@ -934,10 +1038,11 @@ app.post("/payments/cashfree/webhook", async (req, res) => {
     }
 
     const signature = String(req.headers["x-webhook-signature"] || "");
+    const timestamp = String(req.headers["x-webhook-timestamp"] || "");
     const raw = String(req.rawBody || "");
-    const expected = createHmac("sha256", cashfreeSecretKey).update(raw).digest("hex");
-
-    if (!signature || signature !== expected) {
+    const signedPayload = `${timestamp}${raw}`;
+    const expected = createHmac("sha256", cashfreeSecretKey).update(signedPayload).digest("base64");
+    if (!signature || !timestamp || signature !== expected) {
       return res.status(400).json({ status: "error", message: "Invalid webhook signature" });
     }
 
@@ -945,12 +1050,12 @@ app.post("/payments/cashfree/webhook", async (req, res) => {
     const data = payload.data || {};
     const order = data.order || {};
     const payment = data.payment || {};
-    const customer = data.customer_details || {};
+    const customer = data.customer_details || order.customer_details || {};
 
     const orderId = String(order.order_id || "");
     const event = String(payload.type || "").toUpperCase();
     const status = String(payment.payment_status || "").toUpperCase();
-    const amountInr = Number(order.order_amount || 0);
+    const amountInr = Number(order.order_amount || payment.payment_amount || 0);
     const userId = String(customer.customer_id || "");
 
     console.log("[Cashfree webhook] payload", { payload, orderId, event, status, amountInr, userId });
@@ -959,65 +1064,16 @@ app.post("/payments/cashfree/webhook", async (req, res) => {
       return res.status(400).json({ status: "error", message: "Missing order_id or customer_id" });
     }
 
-    const user = getUserById(userId);
-    if (!user) return res.status(404).json({ status: "error", message: "User not found" });
-
-    updateUser(userId, (prev) => {
-      const normalized = ensureUserFinancials(prev);
-      const payments = Array.isArray(normalized.cashfreePayments) ? [...normalized.cashfreePayments] : [];
-      const idx = payments.findIndex((p) => p.orderId === orderId);
-      if (idx !== -1) {
-        payments[idx] = {
-          ...payments[idx],
-          status: status === "PAID" || status === "SUCCESS" || status === "ORDER_PAID" ? "PAID" : "FAILED",
-          updatedAt: new Date().toISOString(),
-        };
-      } else {
-        payments.push({
-          orderId,
-          cashfreeOrderId: orderId,
-          amountInr,
-          status: status === "PAID" || status === "SUCCESS" || status === "ORDER_PAID" ? "PAID" : "FAILED",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-      }
-
-      const alreadyPaid = payments.find((p) => p.orderId === orderId)?.status === "PAID";
-      let updatedWallet = normalized.realWalletInr;
-      let addedPayment = [];
-      if (alreadyPaid && amountInr > 0) {
-        // prevent duplicates by checking walletPayments for this orderId
-        const alreadyLogged = normalized.walletPayments.some((p) => p.orderId === orderId && p.via === "cashfree");
-        if (!alreadyLogged) {
-          updatedWallet = Number((normalized.realWalletInr + amountInr).toFixed(2));
-          addedPayment = [
-            ...normalized.walletPayments,
-            {
-              id: randomUUID(),
-              amountInr: Number(amountInr.toFixed(2)),
-              orderId,
-              paymentId: String(payment.cf_payment_id || ""),
-              signature,
-              createdAt: new Date().toISOString(),
-              via: "cashfree",
-            },
-          ];
-        } else {
-          addedPayment = normalized.walletPayments;
-        }
-      } else {
-        addedPayment = normalized.walletPayments;
-      }
-
-      return {
-        ...normalized,
-        realWalletInr: updatedWallet,
-        walletPayments: addedPayment,
-        cashfreePayments: payments,
-        updatedAt: new Date().toISOString(),
-      };
+    const paid = isCashfreePaid(status) || isCashfreePaid(event);
+    const updated = settleCashfreeOrderForUser({
+      userId,
+      orderId,
+      amountInr,
+      paid,
+      paymentId: String(payment.cf_payment_id || ""),
+      signature,
     });
+    if (!updated) return res.status(404).json({ status: "error", message: "User not found" });
 
     return res.json({ status: "ok" });
   } catch (e) {
@@ -1025,14 +1081,33 @@ app.post("/payments/cashfree/webhook", async (req, res) => {
   }
 });
 
-app.get("/payments/cashfree/status/:orderId", authMiddleware, (req, res) => {
+app.get("/payments/cashfree/status/:orderId", authMiddleware, async (req, res) => {
   try {
     const orderId = String(req.params.orderId || "");
     if (!orderId) return res.status(400).json({ status: "error", message: "orderId required" });
 
-    const user = ensureUserFinancials(req.user);
-    const record = (user.cashfreePayments || []).find((p) => p.orderId === orderId);
+    let user = ensureUserFinancials(req.user);
+    let record = (user.cashfreePayments || []).find((p) => p.orderId === orderId);
     if (!record) return res.status(404).json({ status: "error", message: "Order not found" });
+
+    // If webhook is delayed/missed, reconcile directly with Cashfree and settle here.
+    if (String(record.status || "").toUpperCase() !== "PAID") {
+      const verify = await fetchCashfreeOrderPaidStatus(orderId);
+      if (verify.ok && verify.paid) {
+        const updated = settleCashfreeOrderForUser({
+          userId: user.id,
+          orderId,
+          amountInr: Number(verify.amountInr || record.amountInr || 0),
+          paid: true,
+          paymentId: String(verify.paymentId || ""),
+          signature: "status-reconcile",
+        });
+        if (updated) {
+          user = ensureUserFinancials(updated);
+          record = (user.cashfreePayments || []).find((p) => p.orderId === orderId) || record;
+        }
+      }
+    }
 
     return res.json({ status: "ok", order: record, realWalletInr: Number(user.realWalletInr || 0) });
   } catch (e) {

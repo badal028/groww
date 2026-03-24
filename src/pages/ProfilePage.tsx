@@ -56,7 +56,7 @@ const ProfilePage: React.FC = () => {
   const { user, logout, updateProfile, token, refreshMe } = useAuth();
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [addMoneyOpen, setAddMoneyOpen] = useState(false);
-  const [addAmountInput, setAddAmountInput] = useState('100');
+  const [addAmountInput, setAddAmountInput] = useState('');
   const [addingMoney, setAddingMoney] = useState(false);
   const [cashfreeStatus, setCashfreeStatus] = useState('');
   const location = useLocation();
@@ -123,9 +123,15 @@ const ProfilePage: React.FC = () => {
     const orderId = params.get('cashfreeOrderId');
     if (!orderId || !token) return;
 
+    let attempts = 0;
+    let timer: number | null = null;
+    let stopped = false;
+
     const checkStatus = async () => {
+      if (stopped) return;
+      attempts += 1;
       try {
-        setCashfreeStatus('Checking payment status...');
+        setCashfreeStatus(attempts === 1 ? 'Checking payment status...' : `Checking payment status... (${attempts})`);
         const statusRes = await fetch(`${apiBase}/payments/cashfree/status/${encodeURIComponent(orderId)}`, {
           method: 'GET',
           headers: { Authorization: `Bearer ${token}` },
@@ -139,15 +145,27 @@ const ProfilePage: React.FC = () => {
         if (String(statusData.order?.status || '').toUpperCase() === 'PAID') {
           await refreshMe();
           setCashfreeStatus(`Payment confirmed: ₹${Number(statusData.order.amountInr || 0).toLocaleString('en-IN')} added`);
+          stopped = true;
+          return;
         } else {
           setCashfreeStatus(`Payment status: ${statusData.order?.status || 'PENDING'}`);
         }
       } catch (error) {
         setCashfreeStatus('Payment status check failed');
       }
+
+      if (!stopped && attempts < 12) {
+        timer = window.setTimeout(() => {
+          void checkStatus();
+        }, 3000);
+      }
     };
 
-    checkStatus();
+    void checkStatus();
+    return () => {
+      stopped = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [location.search, token, refreshMe]);
 
   return (
