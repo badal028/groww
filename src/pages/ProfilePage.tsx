@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Settings, Wallet, Package, User, Building2, Share2, Headphones, FileText, Pencil } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
@@ -58,6 +58,8 @@ const ProfilePage: React.FC = () => {
   const [addMoneyOpen, setAddMoneyOpen] = useState(false);
   const [addAmountInput, setAddAmountInput] = useState('100');
   const [addingMoney, setAddingMoney] = useState(false);
+  const [cashfreeStatus, setCashfreeStatus] = useState('');
+  const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const initials = useMemo(() => {
     const src = String(user?.name || 'User');
@@ -90,61 +92,63 @@ const ProfilePage: React.FC = () => {
       return;
     }
     setAddingMoney(true);
-    try {
-      if (!(window as any).Razorpay) {
-        await new Promise<void>((resolve, reject) => {
-          const s = document.createElement('script');
-          s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-          s.async = true;
-          s.onload = () => resolve();
-          s.onerror = () => reject(new Error('Could not load Razorpay'));
-          document.body.appendChild(s);
-        });
-      }
 
-      const orderRes = await fetch(`${apiBase}/payments/razorpay/order`, {
+    try {
+      const orderRes = await fetch(`${apiBase}/payments/cashfree/order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ amountInr: amt }),
       });
       const orderData = await orderRes.json().catch(() => ({}));
-      if (!orderRes.ok) throw new Error(orderData?.message || 'Could not create payment order');
+      if (!orderRes.ok || orderData.status !== 'ok') {
+        throw new Error(orderData?.message || 'Could not create Cashfree order');
+      }
 
-      const RazorpayCtor = (window as any).Razorpay;
-      await new Promise<void>((resolve, reject) => {
-        const rzp = new RazorpayCtor({
-          key: orderData.keyId,
-          amount: orderData.order.amount,
-          currency: orderData.order.currency,
-          order_id: orderData.order.id,
-          name: 'GrowwTrader',
-          description: 'Add money to real balance',
-          prefill: { name: user?.name || '', email: user?.email || '' },
-          handler: async (response: any) => {
-            const verifyRes = await fetch(`${apiBase}/payments/razorpay/verify`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({ ...response, amountInr: amt }),
-            });
-            const verifyData = await verifyRes.json().catch(() => ({}));
-            if (!verifyRes.ok) return reject(new Error(verifyData?.message || 'Payment verification failed'));
-            await refreshMe();
-            toast.success(`Added ₹${amt.toLocaleString('en-IN')} to Wallet balance`);
-            resolve();
-          },
-          modal: { ondismiss: () => reject(new Error('Payment cancelled')) },
-          theme: { color: '#22c55e' },
-        });
-        rzp.open();
-      });
-      setAddMoneyOpen(false);
+      if (!orderData.paymentLink) {
+        throw new Error('Cashfree did not return a payment link');
+      }
+
+      toast.success('Redirecting to Cashfree for payment...');
+      window.location.href = orderData.paymentLink;
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Add money failed';
-      if (msg !== 'Payment cancelled') toast.error(msg);
+      toast.error(msg);
     } finally {
       setAddingMoney(false);
     }
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const orderId = params.get('cashfreeOrderId');
+    if (!orderId || !token) return;
+
+    const checkStatus = async () => {
+      try {
+        setCashfreeStatus('Checking payment status...');
+        const statusRes = await fetch(`${apiBase}/payments/cashfree/status/${encodeURIComponent(orderId)}`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const statusData = await statusRes.json().catch(() => ({}));
+        if (!statusRes.ok || statusData.status !== 'ok') {
+          setCashfreeStatus(statusData.message || 'Could not fetch payment status');
+          return;
+        }
+
+        if (String(statusData.order?.status || '').toUpperCase() === 'PAID') {
+          await refreshMe();
+          setCashfreeStatus(`Payment confirmed: ₹${Number(statusData.order.amountInr || 0).toLocaleString('en-IN')} added`);
+        } else {
+          setCashfreeStatus(`Payment status: ${statusData.order?.status || 'PENDING'}`);
+        }
+      } catch (error) {
+        setCashfreeStatus('Payment status check failed');
+      }
+    };
+
+    checkStatus();
+  }, [location.search, token, refreshMe]);
 
   return (
     <div className="min-h-screen bg-background pb-16 lg:pb-0">
@@ -217,6 +221,9 @@ const ProfilePage: React.FC = () => {
           ) : null}
           <h1 className="text-lg font-semibold text-foreground lg:text-xl">{user?.name || 'Paper Trader'}</h1>
           <p className="text-sm text-muted-foreground">{user?.email || ''}</p>
+          {cashfreeStatus ? (
+            <p className="mt-2 text-xs font-medium text-primary">{cashfreeStatus}</p>
+          ) : null}
         </div>
 
         {/* Menu Items */}

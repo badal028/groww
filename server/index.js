@@ -105,6 +105,7 @@ const ensureUserFinancials = (u) => ({
   avatarUrl: u.avatarUrl || null,
   walletPayments: Array.isArray(u.walletPayments) ? u.walletPayments : [],
   withdrawalRequests: Array.isArray(u.withdrawalRequests) ? u.withdrawalRequests : [],
+  cashfreePayments: Array.isArray(u.cashfreePayments) ? u.cashfreePayments : [],
 });
 
 const currentContestOrCreate = () => {
@@ -384,6 +385,15 @@ const consumeOAuthState = (state) => {
 const apiKey = process.env.KITE_API_KEY;
 const apiSecret = process.env.KITE_API_SECRET;
 const redirectUrl = process.env.KITE_REDIRECT_URL || "http://127.0.0.1:3001/kite/callback";
+
+const cashfreeAppId = process.env.CASHFREE_APP_ID;
+const cashfreeSecretKey = process.env.CASHFREE_SECRET_KEY;
+const cashfreeEnv = process.env.CASHFREE_ENV === "production" ? "production" : "sandbox";
+const cashfreeApiBase = cashfreeEnv === "production" ? "https://api.cashfree.com" : "https://sandbox.cashfree.com";
+const configuredNotifyUrl = String(process.env.CASHFREE_NOTIFY_URL || "").trim();
+const defaultNotifyUrl = `https://growwtrader.in/payments/cashfree/webhook`;
+const cashfreeNotifyUrl = configuredNotifyUrl.startsWith("https://") ? configuredNotifyUrl : defaultNotifyUrl;
+
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
 const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
 const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
@@ -787,6 +797,7 @@ app.post("/payments/razorpay/verify", authMiddleware, (req, res) => {
             paymentId,
             signature,
             createdAt: new Date().toISOString(),
+            via: "razorpay",
           },
         ],
         updatedAt: new Date().toISOString(),
@@ -796,6 +807,231 @@ app.post("/payments/razorpay/verify", authMiddleware, (req, res) => {
     return res.json({ status: "ok", realWalletInr: Number(updated.realWalletInr || 0) });
   } catch (e) {
     return res.status(500).json({ status: "error", message: e?.message || "Payment verification failed" });
+  }
+});
+
+app.post("/payments/cashfree/order", authMiddleware, async (req, res) => {
+  try {
+    if (!cashfreeAppId || !cashfreeSecretKey) {
+      return res.status(503).json({ status: "error", message: "Cashfree not configured" });
+    }
+
+    const amountInr = Number(req.body?.amountInr || 0);
+    if (!Number.isFinite(amountInr) || amountInr <= 0) {
+      return res.status(400).json({ status: "error", message: "amountInr must be positive" });
+    }
+
+    const orderId = `cf_${randomUUID()}`;
+    const configuredReturnUrl = String(process.env.CASHFREE_RETURN_URL || "").trim();
+    const defaultReturnUrl = "https://growwtrader.in/profile";
+    const safeReturnUrl = configuredReturnUrl.startsWith("https://")
+      ? configuredReturnUrl
+      : defaultReturnUrl;
+    const returnUrl = `${safeReturnUrl}${safeReturnUrl.includes("?") ? "&" : "?"}cashfreeOrderId=${encodeURIComponent(orderId)}`;
+
+    const customerPhone = String(req.user.phone || req.user.mobile || "").trim();
+    const resolvedPhone = /^[6-9]\d{9}$/.test(customerPhone)
+      ? customerPhone
+      : "9999999999";
+
+    const body = {
+      order_id: orderId,
+      order_amount: Number(amountInr.toFixed(2)),
+      order_currency: "INR",
+      order_note: "Top up real wallet",
+      customer_details: {
+        customer_id: req.user.id,
+        customer_email: req.user.email,
+        customer_phone: resolvedPhone,
+      },
+      order_meta: {
+        return_url: returnUrl,
+        notify_url: cashfreeNotifyUrl,
+      },
+    };
+
+    // Debug output
+    console.log("[Cashfree] create order", {
+      cashfreeEnv,
+      cashfreeApiBase,
+      cashfreeAppId,
+      cashfreeNotifyUrl,
+      orderId,
+      amountInr,
+      returnUrl,
+      body,
+    });
+
+    const cfResponse = await fetch(`${cashfreeApiBase}/pg/orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-client-id": cashfreeAppId,
+        "x-client-secret": cashfreeSecretKey,
+        "x-api-version": process.env.CASHFREE_API_VERSION || "2022-01-01",
+      },
+      body: JSON.stringify(body),
+    });
+
+    const cfData = await cfResponse.json().catch(() => ({}));
+    console.log("[Cashfree] response", {
+      status: cfResponse.status,
+      statusText: cfResponse.statusText,
+      cfData,
+    });
+    if (!cfResponse.ok || (cfData.status && cfData.status !== "OK" && cfData.status !== "SUCCESS")) {
+      const msg = cfData.message || cfData.msg || "Could not create Cashfree order";
+      return res.status(502).json({ status: "error", message: msg, raw: cfData });
+    }
+
+    const paymentLink =
+      cfData.data?.payment_link ||
+      cfData.data?.payment_link_url ||
+      cfData.data?.payment_url ||
+      cfData.data?.checkout_url ||
+      cfData.data?.link ||
+      cfData.payment_link ||
+      cfData.link;
+
+    if (!paymentLink) {
+      return res.status(502).json({
+        status: "error",
+        message: "Cashfree did not return payment link",
+        raw: cfData,
+      });
+    }
+
+    const cashfreeOrderId = cfData.data?.order_id || cfData.order_id || "";
+
+    updateUser(req.user.id, (prev) => {
+      const normalized = ensureUserFinancials(prev);
+      return {
+        ...normalized,
+        cashfreePayments: [
+          ...normalized.cashfreePayments,
+          {
+            orderId,
+            cashfreeOrderId,
+            amountInr,
+            status: "PENDING",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    return res.json({ status: "ok", paymentLink, orderId });
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: e?.message || "Could not create Cashfree order" });
+  }
+});
+
+app.post("/payments/cashfree/webhook", async (req, res) => {
+  try {
+    if (!cashfreeSecretKey) {
+      return res.status(503).json({ status: "error", message: "Cashfree not configured" });
+    }
+
+    const signature = String(req.headers["x-webhook-signature"] || "");
+    const raw = String(req.rawBody || "");
+    const expected = createHmac("sha256", cashfreeSecretKey).update(raw).digest("hex");
+
+    if (!signature || signature !== expected) {
+      return res.status(400).json({ status: "error", message: "Invalid webhook signature" });
+    }
+
+    const payload = req.body || {};
+    const orderId = String(payload.order_id || payload.orderId || "");
+    const event = String(payload.event || payload.event_type || "").toUpperCase();
+    const status = String(payload.order_status || payload.tx_status || "").toUpperCase();
+    const amountInr = Number(payload.order_amount || payload.amount || 0);
+    const userId = String(payload.customer_id || payload.customerDetails?.customer_id || "");
+
+    console.log("[Cashfree webhook] payload", { payload, orderId, event, status, amountInr, userId });
+
+    if (!orderId || !userId) {
+      return res.status(400).json({ status: "error", message: "Missing order_id or customer_id" });
+    }
+
+    const user = getUserById(userId);
+    if (!user) return res.status(404).json({ status: "error", message: "User not found" });
+
+    updateUser(userId, (prev) => {
+      const normalized = ensureUserFinancials(prev);
+      const payments = Array.isArray(normalized.cashfreePayments) ? [...normalized.cashfreePayments] : [];
+      const idx = payments.findIndex((p) => p.orderId === orderId);
+      if (idx !== -1) {
+        payments[idx] = {
+          ...payments[idx],
+          status: status === "PAID" || status === "SUCCESS" || status === "ORDER_PAID" ? "PAID" : "FAILED",
+          updatedAt: new Date().toISOString(),
+        };
+      } else {
+        payments.push({
+          orderId,
+          cashfreeOrderId: payload.order_id || payload.orderId || "",
+          amountInr,
+          status: status === "PAID" || status === "SUCCESS" || status === "ORDER_PAID" ? "PAID" : "FAILED",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      const alreadyPaid = payments.find((p) => p.orderId === orderId)?.status === "PAID";
+      let updatedWallet = normalized.realWalletInr;
+      let addedPayment = [];
+      if (alreadyPaid && amountInr > 0) {
+        // prevent duplicates by checking walletPayments for this orderId
+        const alreadyLogged = normalized.walletPayments.some((p) => p.orderId === orderId && p.via === "cashfree");
+        if (!alreadyLogged) {
+          updatedWallet = Number((normalized.realWalletInr + amountInr).toFixed(2));
+          addedPayment = [
+            ...normalized.walletPayments,
+            {
+              id: randomUUID(),
+              amountInr: Number(amountInr.toFixed(2)),
+              orderId,
+              paymentId: String(payload.reference_id || payload.payment_id || ""),
+              signature,
+              createdAt: new Date().toISOString(),
+              via: "cashfree",
+            },
+          ];
+        } else {
+          addedPayment = normalized.walletPayments;
+        }
+      } else {
+        addedPayment = normalized.walletPayments;
+      }
+
+      return {
+        ...normalized,
+        realWalletInr: updatedWallet,
+        walletPayments: addedPayment,
+        cashfreePayments: payments,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    return res.json({ status: "ok" });
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: e?.message || "Webhook handling failed" });
+  }
+});
+
+app.get("/payments/cashfree/status/:orderId", authMiddleware, (req, res) => {
+  try {
+    const orderId = String(req.params.orderId || "");
+    if (!orderId) return res.status(400).json({ status: "error", message: "orderId required" });
+
+    const user = ensureUserFinancials(req.user);
+    const record = (user.cashfreePayments || []).find((p) => p.orderId === orderId);
+    if (!record) return res.status(404).json({ status: "error", message: "Order not found" });
+
+    return res.json({ status: "ok", order: record, realWalletInr: Number(user.realWalletInr || 0) });
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: e?.message || "Status check failed" });
   }
 });
 
