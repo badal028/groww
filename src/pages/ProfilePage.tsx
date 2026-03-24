@@ -1,14 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Settings, Wallet, Package, User, Building2, Share2, Headphones, FileText, Pencil } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 
-const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || 'http://127.0.0.1:3001';
-
 const menuItems = [
-  { icon: Wallet, label: '$0.00', sublabel: 'Stocks, F&O balance', action: 'Add money', actionColor: true },
+  { icon: Wallet, label: '$0.00', sublabel: 'Stocks, F&O balance', action: 'Virtual balance' },
+  { icon: Wallet, label: '$0.00', sublabel: 'Wallet balance', action: 'Add money', actionColor: true },
   { icon: Package, label: 'Orders', sublabel: '' },
   { icon: User, label: 'Account Details', sublabel: '' },
   { icon: Building2, label: 'Banks & Autopay', sublabel: '' },
@@ -16,31 +15,136 @@ const menuItems = [
   { icon: Headphones, label: 'Customer Support 24x7', sublabel: '' },
   { icon: FileText, label: 'Reports', sublabel: '' },
 ];
+const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || 'http://127.0.0.1:3001';
+
+const loadImageElement = (file: File): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read image'));
+    };
+    img.src = url;
+  });
+
+const compressAvatarToDataUrl = async (file: File): Promise<string> => {
+  const img = await loadImageElement(file);
+  const maxSide = 512;
+  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const width = Math.max(1, Math.round(img.width * scale));
+  const height = Math.max(1, Math.round(img.height * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Image processing unavailable');
+  ctx.drawImage(img, 0, 0, width, height);
+
+  const out = canvas.toDataURL('image/jpeg', 0.78);
+  if (!out.startsWith('data:image/')) throw new Error('Could not process image');
+  return out;
+};
 
 const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, logout, token, refreshMe, updateProfile } = useAuth();
-  const [adding, setAdding] = useState(false);
-  const [withdrawing, setWithdrawing] = useState(false);
-  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
-  const [avatarInput, setAvatarInput] = useState('');
-  const [amountInput, setAmountInput] = useState('100');
-  const [withdrawInput, setWithdrawInput] = useState('100');
+  const { user, logout, updateProfile, token, refreshMe } = useAuth();
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [addMoneyOpen, setAddMoneyOpen] = useState(false);
+  const [addAmountInput, setAddAmountInput] = useState('100');
+  const [addingMoney, setAddingMoney] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const initials = useMemo(() => {
     const src = String(user?.name || 'User');
     const parts = src.split(/\s+/).filter(Boolean);
     return parts.length >= 2 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : src.slice(0, 2).toUpperCase();
   }, [user?.name]);
   const walletLabel = `₹${Number(user?.walletInr ?? 0).toLocaleString('en-IN')}`;
-  const realWalletLabel = `₹${Number(user?.realWalletInr ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+  const realWalletLabel = `₹${Number(user?.realWalletInr ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  const userMenuItems = menuItems.map((item) =>
-    item.icon === Wallet
-      ? { ...item, label: walletLabel }
-      : item,
-  );
+  const userMenuItems = menuItems.map((item, index) => {
+    if (item.icon !== Wallet) return item;
+    if (index === 0) return { ...item, label: walletLabel };
+    if (index === 1) return { ...item, label: realWalletLabel };
+    return item;
+  });
+
+  const openAddMoney = () => {
+    setAddAmountInput('');
+    setAddMoneyOpen(true);
+  };
+
+  const handleAddMoney = async () => {
+    const amt = Number(addAmountInput);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast.error('Enter a valid amount');
+      return;
+    }
+    if (!token) {
+      toast.error('Login required');
+      return;
+    }
+    setAddingMoney(true);
+    try {
+      if (!(window as any).Razorpay) {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+          s.async = true;
+          s.onload = () => resolve();
+          s.onerror = () => reject(new Error('Could not load Razorpay'));
+          document.body.appendChild(s);
+        });
+      }
+
+      const orderRes = await fetch(`${apiBase}/payments/razorpay/order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amountInr: amt }),
+      });
+      const orderData = await orderRes.json().catch(() => ({}));
+      if (!orderRes.ok) throw new Error(orderData?.message || 'Could not create payment order');
+
+      const RazorpayCtor = (window as any).Razorpay;
+      await new Promise<void>((resolve, reject) => {
+        const rzp = new RazorpayCtor({
+          key: orderData.keyId,
+          amount: orderData.order.amount,
+          currency: orderData.order.currency,
+          order_id: orderData.order.id,
+          name: 'GrowwTrader',
+          description: 'Add money to real balance',
+          prefill: { name: user?.name || '', email: user?.email || '' },
+          handler: async (response: any) => {
+            const verifyRes = await fetch(`${apiBase}/payments/razorpay/verify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ ...response, amountInr: amt }),
+            });
+            const verifyData = await verifyRes.json().catch(() => ({}));
+            if (!verifyRes.ok) return reject(new Error(verifyData?.message || 'Payment verification failed'));
+            await refreshMe();
+            toast.success(`Added ₹${amt.toLocaleString('en-IN')} to Wallet balance`);
+            resolve();
+          },
+          modal: { ondismiss: () => reject(new Error('Payment cancelled')) },
+          theme: { color: '#22c55e' },
+        });
+        rzp.open();
+      });
+      setAddMoneyOpen(false);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Add money failed';
+      if (msg !== 'Payment cancelled') toast.error(msg);
+    } finally {
+      setAddingMoney(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background pb-16 lg:pb-0">
@@ -71,56 +175,57 @@ const ProfilePage: React.FC = () => {
             <button
               type="button"
               aria-label="Edit profile icon"
-              onClick={() => {
-                setAvatarInput(user?.avatarUrl || '');
-                setAvatarModalOpen(true);
-              }}
+              onClick={() => fileInputRef.current?.click()}
               className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-card text-foreground shadow"
             >
               <Pencil className="h-3.5 w-3.5" />
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                if (!f.type.startsWith('image/')) {
+                  toast.error('Please select an image file');
+                  return;
+                }
+                const maxBytes = 6 * 1024 * 1024;
+                if (f.size > maxBytes) {
+                  toast.error('Image too large (max 6 MB)');
+                  return;
+                }
+                setUploadingAvatar(true);
+                try {
+                  const dataUrl = await compressAvatarToDataUrl(f);
+                  const r = await updateProfile({ avatarUrl: dataUrl });
+                  if (!r.ok) toast.error(r.message || 'Could not update avatar');
+                  else toast.success('Profile icon updated');
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : 'Could not update avatar');
+                } finally {
+                  setUploadingAvatar(false);
+                  e.currentTarget.value = '';
+                }
+              }}
+            />
           </div>
+          {uploadingAvatar ? (
+            <p className="mb-2 text-xs text-muted-foreground">Uploading image...</p>
+          ) : null}
           <h1 className="text-lg font-semibold text-foreground lg:text-xl">{user?.name || 'Paper Trader'}</h1>
           <p className="text-sm text-muted-foreground">{user?.email || ''}</p>
         </div>
 
         {/* Menu Items */}
         <div className="flex-1 px-4 lg:px-0 lg:max-w-xl">
-          <div className="mb-4 rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Real balance</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">{realWalletLabel}</p>
-              </div>
-              <button
-                type="button"
-                disabled={adding}
-                onClick={() => {
-                  setAmountInput('100');
-                  setAddModalOpen(true);
-                }}
-                className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60"
-              >
-                {adding ? 'Adding...' : 'Add money'}
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">Contest entry fee is deducted from real balance.</p>
-            <button
-              type="button"
-              disabled={withdrawing || !token}
-              onClick={() => {
-                setWithdrawInput('100');
-                setWithdrawModalOpen(true);
-              }}
-              className="mt-3 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground disabled:opacity-60"
-            >
-              {withdrawing ? 'Submitting...' : 'Request withdraw'}
-            </button>
-          </div>
-
           {userMenuItems.map((item, i) => (
             <button
               key={i}
+              type="button"
+              onClick={i === 1 ? openAddMoney : undefined}
               className="flex w-full items-center justify-between border-b border-border py-4 text-left hover:bg-muted/50 transition-colors rounded px-2 -mx-2"
             >
               <div className="flex items-center gap-4">
@@ -152,6 +257,36 @@ const ProfilePage: React.FC = () => {
         </div>
       </div>
 
+      <Dialog open={addMoneyOpen} onOpenChange={setAddMoneyOpen}>
+        <DialogContent className="max-w-sm px-5 sm:px-6">
+          <h3 className="text-base font-semibold text-foreground">Add money</h3>
+          <input
+            value={addAmountInput}
+            onChange={(e) => setAddAmountInput(e.target.value.replace(/[^\d.]/g, ''))}
+            placeholder="Amount in INR"
+            className="mt-3 h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+          />
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-md border border-border px-3 py-2 text-sm"
+              onClick={() => setAddMoneyOpen(false)}
+              disabled={addingMoney}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+              onClick={handleAddMoney}
+              disabled={addingMoney}
+            >
+              {addingMoney ? 'Processing...' : 'Pay now'}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Footer */}
       <div className="mt-6 flex items-center justify-between border-t border-border px-4 py-4 text-xs text-muted-foreground lg:px-8">
         <span>About Us</span>
@@ -159,155 +294,6 @@ const ProfilePage: React.FC = () => {
         <span>Charges</span>
       </div>
 
-      <Dialog open={avatarModalOpen} onOpenChange={setAvatarModalOpen}>
-        <DialogContent className="max-w-sm">
-          <h3 className="text-base font-semibold text-foreground">Update profile icon</h3>
-          <input
-            value={avatarInput}
-            onChange={(e) => setAvatarInput(e.target.value)}
-            placeholder="https://..."
-            className="mt-3 h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
-          />
-          <div className="mt-4 flex justify-end gap-2">
-            <button type="button" className="rounded-md border border-border px-3 py-2 text-sm" onClick={() => setAvatarModalOpen(false)}>Cancel</button>
-            <button
-              type="button"
-              className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
-              onClick={async () => {
-                const r = await updateProfile({ avatarUrl: avatarInput.trim() });
-                if (!r.ok) toast.error(r.message || 'Could not update avatar');
-                else {
-                  toast.success('Profile icon updated');
-                  setAvatarModalOpen(false);
-                }
-              }}
-            >
-              Save
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
-        <DialogContent className="max-w-sm">
-          <h3 className="text-base font-semibold text-foreground">Add money</h3>
-          <input
-            value={amountInput}
-            onChange={(e) => setAmountInput(e.target.value.replace(/[^\d.]/g, ''))}
-            placeholder="Amount in INR"
-            className="mt-3 h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
-          />
-          <div className="mt-4 flex justify-end gap-2">
-            <button type="button" className="rounded-md border border-border px-3 py-2 text-sm" onClick={() => setAddModalOpen(false)}>Cancel</button>
-            <button
-              type="button"
-              className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
-              onClick={async () => {
-                const amt = Number(amountInput);
-                if (!Number.isFinite(amt) || amt <= 0) return toast.error('Invalid amount');
-                if (!token) return toast.error('Login required');
-                setAdding(true);
-                try {
-                  if (!(window as any).Razorpay) {
-                    await new Promise<void>((resolve, reject) => {
-                      const s = document.createElement('script');
-                      s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-                      s.async = true;
-                      s.onload = () => resolve();
-                      s.onerror = () => reject(new Error('Could not load Razorpay checkout'));
-                      document.body.appendChild(s);
-                    });
-                  }
-                  const orderRes = await fetch(`${apiBase}/payments/razorpay/order`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({ amountInr: amt }),
-                  });
-                  const orderData = await orderRes.json().catch(() => ({}));
-                  if (!orderRes.ok) throw new Error(orderData?.message || 'Could not create payment order');
-                  const RazorpayCtor = (window as any).Razorpay;
-                  await new Promise<void>((resolve, reject) => {
-                    const rzp = new RazorpayCtor({
-                      key: orderData.keyId,
-                      amount: orderData.order.amount,
-                      currency: orderData.order.currency,
-                      order_id: orderData.order.id,
-                      name: 'GrowwTrader',
-                      description: 'Add money to real balance',
-                      prefill: { name: user?.name || '', email: user?.email || '' },
-                      handler: async (response: any) => {
-                        const verifyRes = await fetch(`${apiBase}/payments/razorpay/verify`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                          body: JSON.stringify({ ...response, amountInr: amt }),
-                        });
-                        const verifyData = await verifyRes.json().catch(() => ({}));
-                        if (!verifyRes.ok) return reject(new Error(verifyData?.message || 'Payment verification failed'));
-                        await refreshMe();
-                        toast.success(`Added ₹${amt.toLocaleString('en-IN')} to real balance`);
-                        resolve();
-                      },
-                      modal: { ondismiss: () => reject(new Error('Payment cancelled')) },
-                      theme: { color: '#22c55e' },
-                    });
-                    rzp.open();
-                  });
-                  setAddModalOpen(false);
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : 'Add money failed');
-                } finally {
-                  setAdding(false);
-                }
-              }}
-            >
-              Pay now
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={withdrawModalOpen} onOpenChange={setWithdrawModalOpen}>
-        <DialogContent className="max-w-sm">
-          <h3 className="text-base font-semibold text-foreground">Request withdraw</h3>
-          <input
-            value={withdrawInput}
-            onChange={(e) => setWithdrawInput(e.target.value.replace(/[^\d.]/g, ''))}
-            placeholder="Amount in INR"
-            className="mt-3 h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
-          />
-          <div className="mt-4 flex justify-end gap-2">
-            <button type="button" className="rounded-md border border-border px-3 py-2 text-sm" onClick={() => setWithdrawModalOpen(false)}>Cancel</button>
-            <button
-              type="button"
-              className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
-              onClick={async () => {
-                const amt = Number(withdrawInput);
-                if (!Number.isFinite(amt) || amt <= 0) return toast.error('Invalid amount');
-                if (!token) return toast.error('Login required');
-                setWithdrawing(true);
-                try {
-                  const res = await fetch(`${apiBase}/wallet/withdraw/request`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({ amountInr: amt }),
-                  });
-                  const data = await res.json().catch(() => ({}));
-                  if (!res.ok) throw new Error(data?.message || 'Withdraw request failed');
-                  await refreshMe();
-                  toast.success('Withdraw request submitted. Admin approval pending.');
-                  setWithdrawModalOpen(false);
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : 'Withdraw failed');
-                } finally {
-                  setWithdrawing(false);
-                }
-              }}
-            >
-              Submit
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

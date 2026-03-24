@@ -43,7 +43,7 @@ export function useProLeague() {
     [token],
   );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!token) {
       setContest(null);
       setLeaderboard([]);
@@ -51,7 +51,7 @@ export function useProLeague() {
       setMyRank(null);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const [cRes, lRes] = await Promise.all([
@@ -69,7 +69,7 @@ export function useProLeague() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load Pro-League");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [token, headers]);
 
@@ -84,7 +84,7 @@ export function useProLeague() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return { ok: false, message: data?.message || "Could not join contest" };
       await refreshMe();
-      await load();
+      await load(true);
       return { ok: true };
     } catch {
       return { ok: false, message: "Unable to connect backend" };
@@ -96,6 +96,14 @@ export function useProLeague() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!token) return;
+    const timer = window.setInterval(() => {
+      void load(true);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [token, load]);
 
   return { contest, leaderboard, joined, myRank, loading, joining, error, refetch: load, join };
 }

@@ -12,9 +12,11 @@ import { subscribeKiteConnection, subscribeKiteMarket } from "@/services/kiteMar
 
 const REFRESH_MS_FALLBACK = 30000;
 const KITE_REST_FALLBACK_MS = 90_000;
+const zeroIndices = (arr: MarketIndex[]): MarketIndex[] =>
+  arr.map((i) => ({ ...i, value: 0, change: 0, changePercent: 0 }));
 
 export const useLiveIndices = (baseIndices: MarketIndex[]) => {
-  const [indices, setIndices] = useState<MarketIndex[]>(baseIndices);
+  const [indices, setIndices] = useState<MarketIndex[]>(() => zeroIndices(baseIndices));
   const [status, setStatus] = useState<LiveStatus>("simulated");
   const [kiteWsConnected, setKiteWsConnected] = useState(false);
   const provider = useMemo(() => detectProvider(), []);
@@ -23,7 +25,7 @@ export const useLiveIndices = (baseIndices: MarketIndex[]) => {
   useEffect(() => subscribeKiteConnection(setKiteWsConnected), []);
 
   useEffect(() => {
-    setIndices(baseIndices);
+    setIndices(zeroIndices(baseIndices));
   }, [baseIndices]);
 
   useEffect(() => {

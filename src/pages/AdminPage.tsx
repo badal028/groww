@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
-const adminEmail = String(import.meta.env.VITE_ADMIN_EMAIL || "").trim().toLowerCase();
+const adminEmail = String(import.meta.env.VITE_ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase();
 
 function formatInr(n: number): string {
   const v = Number(n || 0);
@@ -84,7 +84,7 @@ type PaperPosition = {
 };
 
 export default function AdminPage() {
-  const { user, token } = useAuth();
+  const { user, token, loading: authLoading } = useAuth();
   const isAdmin = useMemo(() => {
     if (!adminEmail) return false;
     return String(user?.email || "").trim().toLowerCase() === adminEmail;
@@ -107,6 +107,11 @@ export default function AdminPage() {
     if (!token) return {};
     return { Authorization: `Bearer ${token}` };
   }, [token]);
+  const usersByProfit = useMemo(
+    () => [...users].sort((a, b) => Number(b.totalPnlInr || 0) - Number(a.totalPnlInr || 0)),
+    [users],
+  );
+  const hasLoadedData = Boolean(summary || dailyRows.length || users.length || contest || withdrawals.length);
 
   useEffect(() => {
     if (!token) return;
@@ -119,7 +124,7 @@ export default function AdminPage() {
     let cancelled = false;
     const run = async () => {
       try {
-        setLoading(true);
+        setLoading((prev) => (hasLoadedData ? prev : true));
         setErr(null);
         const [sRes, dRes, uRes, cRes, wRes] = await Promise.all([
           fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
@@ -163,7 +168,7 @@ export default function AdminPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, isAdmin]);
+  }, [token, isAdmin, hasLoadedData]);
 
   useEffect(() => {
     if (!token) return;
@@ -210,6 +215,10 @@ export default function AdminPage() {
     );
   }
 
+  if (authLoading) {
+    return <div className="p-4 text-sm text-muted-foreground">Checking access…</div>;
+  }
+
   if (!isAdmin) {
     return <Navigate to="/stocks" replace />;
   }
@@ -220,7 +229,7 @@ export default function AdminPage() {
 
       {err && <div className="mb-4 rounded border border-loss/30 bg-loss/10 p-3 text-sm text-loss">{err}</div>}
 
-      {loading ? (
+      {loading && !hasLoadedData ? (
         <div className="text-sm text-muted-foreground">Loading…</div>
       ) : (
         <>
@@ -388,7 +397,7 @@ export default function AdminPage() {
               <div className="rounded-xl border border-border bg-card p-3">
                 <div className="text-sm font-semibold">Users</div>
                 <div className="mt-2 max-h-[50vh] overflow-auto">
-                  {users.map((u) => (
+                  {usersByProfit.map((u) => (
                     <button
                       key={u.id}
                       type="button"

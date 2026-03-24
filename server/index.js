@@ -427,6 +427,7 @@ app.use(
 );
 app.use(
   express.json({
+    limit: "6mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf?.toString?.() || "";
     },

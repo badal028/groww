@@ -14,9 +14,11 @@ const REFRESH_MS = 15000;
 const TWELVE_DATA_REFRESH_MS = 65000;
 /** When Kite WebSocket is up, REST is only a slow safety net. */
 const KITE_REST_FALLBACK_MS = 90_000;
+const zeroStocks = (arr: Stock[]): Stock[] =>
+  arr.map((s) => ({ ...s, price: 0, change: 0, changePercent: 0 }));
 
 export const useLiveStocks = (baseStocks: Stock[]) => {
-  const [stocks, setStocks] = useState<Stock[]>(baseStocks);
+  const [stocks, setStocks] = useState<Stock[]>(() => zeroStocks(baseStocks));
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<LiveStatus>("simulated");
   const [kiteWsConnected, setKiteWsConnected] = useState(false);
@@ -29,7 +31,7 @@ export const useLiveStocks = (baseStocks: Stock[]) => {
   useEffect(() => subscribeKiteConnection(setKiteWsConnected), []);
 
   useEffect(() => {
-    setStocks(baseStocksRef.current);
+    setStocks(zeroStocks(baseStocksRef.current));
   }, [stockSymbolsKey]);
 
   /** Kite Ticker → instant list updates (Groww-like). */

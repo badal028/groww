@@ -157,7 +157,7 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
         </p>
         <p
           className={cn(
-            "mt-1 text-[20px] font-bold tabular-nums leading-none tracking-tight lg:text-[1.75rem]",
+            "mt-1 text-[13px] font-bold tabular-nums leading-none tracking-tight lg:text-[1.75rem]",
             totalPnl >= 0 ? "text-profit" : "text-loss",
           )}
         >
@@ -267,7 +267,7 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
                 </p>
                 <p
                   className={cn(
-                    "shrink-0 text-base font-semibold tabular-nums leading-none lg:text-lg",
+                    "shrink-0 text-[12px] font-semibold tabular-nums leading-none lg:text-lg",
                     pnl >= 0 ? "text-profit" : "text-loss",
                   )}
                 >
