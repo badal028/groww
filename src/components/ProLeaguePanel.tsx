@@ -16,11 +16,13 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(20);
   const contestDateISO = contest?.contestDateISO ?? "";
-  const leaderboardByProfit = useMemo(
-    () => [...leaderboard].sort((a, b) => Number(b.totalPnlInr || 0) - Number(a.totalPnlInr || 0)),
-    [leaderboard],
-  );
-  const visibleRows = useMemo(() => leaderboardByProfit.slice(0, visibleCount), [leaderboardByProfit, visibleCount]);
+  const seats = contest?.participants?.length ?? 0;
+  const contestStarted = seats >= (contest?.minParticipants ?? 500);
+  const leaderboardSorted = useMemo(() => {
+    if (!contestStarted) return leaderboard;
+    return [...leaderboard].sort((a, b) => Number(b.totalPnlInr || 0) - Number(a.totalPnlInr || 0));
+  }, [leaderboard, contestStarted]);
+  const visibleRows = useMemo(() => leaderboardSorted.slice(0, visibleCount), [leaderboardSorted, visibleCount]);
 
   useEffect(() => {
     setVisibleCount(20);
@@ -29,7 +31,6 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
   if (loading) return <div className="py-6 text-sm text-muted-foreground">Loading Pro-League...</div>;
   if (!contest) return <div className="py-6 text-sm text-muted-foreground">Contest is not available.</div>;
 
-  const seats = contest.participants?.length || 0;
   const canJoin = !joined && contest.status === "OPEN";
 
   return (
@@ -119,8 +120,8 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
             onScroll={(e) => {
               const el = e.currentTarget;
               const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 48;
-              if (nearBottom && visibleCount < leaderboardByProfit.length) {
-                setVisibleCount((prev) => Math.min(prev + 20, leaderboardByProfit.length));
+              if (nearBottom && visibleCount < leaderboardSorted.length) {
+                setVisibleCount((prev) => Math.min(prev + 20, leaderboardSorted.length));
               }
             }}
           >
@@ -132,29 +133,44 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
                 key={row.userId}
                 className={cn(
                   "flex items-center justify-between gap-3 px-4 py-3 transition-colors",
-                  displayRank <= 3 ? "bg-emerald-500/10" : "hover:bg-muted/30",
+                  contestStarted && displayRank <= 3 ? "bg-emerald-500/10" : "hover:bg-muted/30",
                 )}
               >
                 <div className="min-w-0 flex items-center gap-3">
                   <div className={cn(
                     "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                    displayRank <= 3 ? "bg-emerald-500/20 text-emerald-400" : "bg-muted text-muted-foreground",
+                    contestStarted && displayRank <= 3
+                      ? "bg-emerald-500/20 text-emerald-400"
+                      : "bg-muted text-muted-foreground",
                   )}>
                     {displayRank}
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-foreground">{row.name}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {displayRank === 1 ? "Wins ₹10,000" : displayRank === 2 ? "Wins ₹5,000" : displayRank === 3 ? "Wins ₹2,000" : row.email}
+                      {contestStarted
+                        ? displayRank === 1
+                          ? "Wins ₹10,000"
+                          : displayRank === 2
+                            ? "Wins ₹5,000"
+                            : displayRank === 3
+                              ? "Wins ₹2,000"
+                              : row.email
+                        : "Joined"}
                     </p>
                   </div>
                 </div>
-                <p className={cn("shrink-0 text-sm font-semibold tabular-nums", row.totalPnlInr >= 0 ? "text-profit" : "text-loss")}>
-                  {row.totalPnlInr >= 0 ? "+" : ""}{inr(row.totalPnlInr)}
+                <p
+                  className={cn(
+                    "shrink-0 text-sm font-semibold tabular-nums",
+                    contestStarted ? (row.totalPnlInr >= 0 ? "text-profit" : "text-loss") : "text-muted-foreground",
+                  )}
+                >
+                  {contestStarted ? `${row.totalPnlInr >= 0 ? "+" : ""}${inr(row.totalPnlInr)}` : "—"}
                 </p>
               </div>
             )})}
-            {visibleCount < leaderboardByProfit.length ? (
+            {visibleCount < leaderboardSorted.length ? (
               <div className="px-4 py-3 text-center text-xs text-muted-foreground">Scroll for more users...</div>
             ) : null}
             </div>

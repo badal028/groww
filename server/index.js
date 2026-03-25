@@ -87,14 +87,13 @@ const pruneExitedPositionsBeforeToday = (positions) => {
   });
 };
 
-const nextContestDateISO = () => {
-  const now = new Date();
-  const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-  ist.setDate(ist.getDate() + 1);
-  const y = ist.getFullYear();
-  const m = String(ist.getMonth() + 1).padStart(2, "0");
-  const d = String(ist.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+const activeContestDateISO = () => {
+  const base = new Date();
+  const { mins } = istMinutesNow();
+  // Contest ends at 3:30 PM IST. Before/at close => current day contest; after close => next day.
+  const shiftDays = mins > 15 * 60 + 30 ? 1 : 0;
+  const dt = new Date(base.getTime() + shiftDays * 86400000);
+  return isoDateInIST(dt);
 };
 
 const ensureUserFinancials = (u) => ({
@@ -109,29 +108,28 @@ const ensureUserFinancials = (u) => ({
 });
 
 const currentContestOrCreate = () => {
-  const all = getAllContests();
-  const today = nextContestDateISO();
-  const existing =
-    all.find((c) => c?.status === "OPEN" && c?.contestDateISO >= today) ||
-    all.find((c) => c?.contestDateISO >= today) ||
-    null;
-  if (existing) return existing;
-
+  const today = activeContestDateISO();
   const id = `contest-${today}`;
-  const created = upsertContest(id, () => ({
-    id,
-    title: "The Pro-League",
-    contestDateISO: today,
-    entryFeeInr: defaultContestFeeInr,
-    minParticipants: minContestParticipants,
-    maxParticipants: maxContestParticipants,
-    prizePoolInr: { first: 10000, second: 5000, third: 2000 },
-    participants: [],
-    payouts: [],
-    status: "OPEN",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }));
+  const created = upsertContest(id, (prev) => {
+    if (prev) {
+      // Keep participants/payouts intact; just refresh updatedAt.
+      return { ...prev, updatedAt: new Date().toISOString() };
+    }
+    return {
+      id,
+      title: "The Pro-League",
+      contestDateISO: today,
+      entryFeeInr: defaultContestFeeInr,
+      minParticipants: minContestParticipants,
+      maxParticipants: maxContestParticipants,
+      prizePoolInr: { first: 10000, second: 5000, third: 2000 },
+      participants: [],
+      payouts: [],
+      status: "OPEN",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  });
   return created;
 };
 
@@ -1306,7 +1304,40 @@ app.post("/contest/join", authMiddleware, (req, res) => {
 app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
   const contest = currentContestOrCreate();
   const participants = Array.isArray(contest.participants) ? contest.participants : [];
+  const minParticipants = Number(contest.minParticipants || minContestParticipants);
+  const contestStarted = participants.length >= minParticipants;
+  const joinedAtByUserId = new Map(
+    participants.map((p) => [String(p.userId), String(p.joinedAt || "")]),
+  );
   const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id));
+
+  // If not started, keep leaderboard stable + non-winner (no P&L).
+  if (!contestStarted) {
+    const ordered = [...users].sort((a, b) => {
+      const aa = joinedAtByUserId.get(a.id) || "";
+      const bb = joinedAtByUserId.get(b.id) || "";
+      const da = Number.isFinite(Date.parse(aa)) ? Date.parse(aa) : 0;
+      const db = Number.isFinite(Date.parse(bb)) ? Date.parse(bb) : 0;
+      return da - db;
+    });
+    const leaderboard = ordered.map((u, idx) => ({
+      userId: u.id,
+      name: u.name,
+      email: u.email,
+      avatarUrl: u.avatarUrl || null,
+      totalPnlInr: 0,
+      rank: idx + 1,
+    }));
+    const me = leaderboard.find((x) => x.userId === req.user.id) || null;
+    return res.json({
+      status: "ok",
+      contest,
+      leaderboard,
+      myRank: me?.rank || null,
+      participantCount: participants.length,
+    });
+  }
+
   let quotes = {};
   if (auth.accessToken) {
     try {
@@ -1327,6 +1358,7 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
       // keep fallback with realized-only
     }
   }
+
   const leaderboard = users
     .map((u) => {
       const realized = Number(u.realizedPnlInr || 0);

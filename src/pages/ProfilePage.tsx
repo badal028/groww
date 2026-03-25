@@ -58,8 +58,8 @@ const ProfilePage: React.FC = () => {
   const [addMoneyOpen, setAddMoneyOpen] = useState(false);
   const [addAmountInput, setAddAmountInput] = useState('');
   const [addingMoney, setAddingMoney] = useState(false);
-  const [cashfreeStatus, setCashfreeStatus] = useState('');
   const location = useLocation();
+  const isCashfreeReturn = location.search.includes("cashfreeOrderId=");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const initials = useMemo(() => {
     const src = String(user?.name || 'User');
@@ -131,28 +131,20 @@ const ProfilePage: React.FC = () => {
       if (stopped) return;
       attempts += 1;
       try {
-        setCashfreeStatus(attempts === 1 ? 'Checking payment status...' : `Checking payment status... (${attempts})`);
         const statusRes = await fetch(`${apiBase}/payments/cashfree/status/${encodeURIComponent(orderId)}`, {
           method: 'GET',
           headers: { Authorization: `Bearer ${token}` },
         });
         const statusData = await statusRes.json().catch(() => ({}));
-        if (!statusRes.ok || statusData.status !== 'ok') {
-          setCashfreeStatus(statusData.message || 'Could not fetch payment status');
-          return;
-        }
+        if (!statusRes.ok || statusData.status !== 'ok') return;
 
         if (String(statusData.order?.status || '').toUpperCase() === 'PAID') {
           await refreshMe();
-          setCashfreeStatus(`Payment confirmed: ₹${Number(statusData.order.amountInr || 0).toLocaleString('en-IN')} added`);
+          toast.success(`₹${Number(statusData.order.amountInr || 0).toLocaleString('en-IN')} added successfully`);
           stopped = true;
           return;
-        } else {
-          setCashfreeStatus(`Payment status: ${statusData.order?.status || 'PENDING'}`);
         }
-      } catch (error) {
-        setCashfreeStatus('Payment status check failed');
-      }
+      } catch {}
 
       if (!stopped && attempts < 12) {
         timer = window.setTimeout(() => {
@@ -172,7 +164,10 @@ const ProfilePage: React.FC = () => {
     <div className="min-h-screen bg-background pb-16 lg:pb-0">
       {/* Header */}
       <header className="flex items-center justify-between border-b border-border bg-card px-4 py-3 lg:px-8">
-        <button onClick={() => navigate(-1)} className="text-foreground lg:hidden">
+        <button
+          onClick={() => (isCashfreeReturn ? navigate('/stocks') : navigate(-1))}
+          className="text-foreground lg:hidden"
+        >
           <ArrowLeft className="h-5 w-5" />
         </button>
         <h1 className="hidden lg:block text-2xl font-bold text-foreground">Profile</h1>
@@ -239,9 +234,6 @@ const ProfilePage: React.FC = () => {
           ) : null}
           <h1 className="text-lg font-semibold text-foreground lg:text-xl">{user?.name || 'Paper Trader'}</h1>
           <p className="text-sm text-muted-foreground">{user?.email || ''}</p>
-          {cashfreeStatus ? (
-            <p className="mt-2 text-xs font-medium text-primary">{cashfreeStatus}</p>
-          ) : null}
         </div>
 
         {/* Menu Items */}

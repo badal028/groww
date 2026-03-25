@@ -266,9 +266,9 @@ export default function FoOptionChainModal({
 
           <div className="mt-4 overflow-auto rounded-xl border border-border bg-card">
             <div className="flex items-center justify-between px-4 py-3 text-xs text-muted-foreground">
-              <span>Put</span>
-              <span className="font-semibold text-foreground">Strike</span>
               <span>Call</span>
+              <span className="font-semibold text-foreground">Strike</span>
+              <span>Put</span>
             </div>
 
             <div className="divide-y divide-border">
@@ -279,20 +279,20 @@ export default function FoOptionChainModal({
                   <div key={row.strike} className="grid grid-cols-3 items-center px-4 py-3">
                     <button
                       type="button"
-                      className="text-left text-sm text-loss disabled:opacity-50"
-                      disabled={!row.PE}
-                      onClick={() => row.PE && onSelect(row.PE)}
-                    >
-                      {row.PE ? `₹${row.PE.lastPrice.toFixed(2)}` : "—"}
-                    </button>
-                    <div className="text-center text-sm font-semibold text-foreground">{row.strike}</div>
-                    <button
-                      type="button"
-                      className="text-right text-sm text-profit disabled:opacity-50"
+                      className="text-left text-sm text-profit disabled:opacity-50"
                       disabled={!row.CE}
                       onClick={() => row.CE && onSelect(row.CE)}
                     >
                       {row.CE ? `₹${row.CE.lastPrice.toFixed(2)}` : "—"}
+                    </button>
+                    <div className="text-center text-sm font-semibold text-foreground">{row.strike}</div>
+                    <button
+                      type="button"
+                      className="text-right text-sm text-loss disabled:opacity-50"
+                      disabled={!row.PE}
+                      onClick={() => row.PE && onSelect(row.PE)}
+                    >
+                      {row.PE ? `₹${row.PE.lastPrice.toFixed(2)}` : "—"}
                     </button>
                   </div>
                 ))
@@ -326,9 +326,9 @@ export default function FoOptionChainModal({
 
           <div className="mt-4 max-h-[65vh] overflow-auto rounded-xl border border-border bg-card">
             <div className="flex items-center justify-between px-4 py-3 text-xs text-muted-foreground">
-              <span>Put</span>
-              <span className="font-semibold text-foreground">Strike</span>
               <span>Call</span>
+              <span className="font-semibold text-foreground">Strike</span>
+              <span>Put</span>
             </div>
             <div className="divide-y divide-border">
               {loading ? (
@@ -338,20 +338,20 @@ export default function FoOptionChainModal({
                   <div key={row.strike} className="grid grid-cols-3 items-center px-4 py-3">
                     <button
                       type="button"
-                      className="text-left text-sm text-loss disabled:opacity-50"
-                      disabled={!row.PE}
-                      onClick={() => row.PE && onSelect(row.PE)}
-                    >
-                      {row.PE ? `₹${row.PE.lastPrice.toFixed(2)}` : "—"}
-                    </button>
-                    <div className="text-center text-sm font-semibold text-foreground">{row.strike}</div>
-                    <button
-                      type="button"
-                      className="text-right text-sm text-profit disabled:opacity-50"
+                      className="text-left text-sm text-profit disabled:opacity-50"
                       disabled={!row.CE}
                       onClick={() => row.CE && onSelect(row.CE)}
                     >
                       {row.CE ? `₹${row.CE.lastPrice.toFixed(2)}` : "—"}
+                    </button>
+                    <div className="text-center text-sm font-semibold text-foreground">{row.strike}</div>
+                    <button
+                      type="button"
+                      className="text-right text-sm text-loss disabled:opacity-50"
+                      disabled={!row.PE}
+                      onClick={() => row.PE && onSelect(row.PE)}
+                    >
+                      {row.PE ? `₹${row.PE.lastPrice.toFixed(2)}` : "—"}
                     </button>
                   </div>
                 ))

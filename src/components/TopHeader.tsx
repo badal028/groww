@@ -3,6 +3,7 @@ import GrowwLogo from './GrowwLogo';
 import { Search, LayoutGrid, Moon, Sun, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/hooks/useAuth';
 
 interface TopHeaderProps {
   title: string;
@@ -16,6 +17,14 @@ interface TopHeaderProps {
 const TopHeader: React.FC<TopHeaderProps> = ({ title, onSearchClick, showBackButton, onBackClick }) => {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const { user } = useAuth();
+  const initials = (user?.name || 'U')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase();
 
   return (
     <header className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-card px-4 py-3">
@@ -51,9 +60,13 @@ const TopHeader: React.FC<TopHeaderProps> = ({ title, onSearchClick, showBackBut
           onClick={() => navigate('/profile')}
           className="h-8 w-8 overflow-hidden rounded-full bg-muted"
         >
-          <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-muted-foreground">
-            U
-          </div>
+          {user?.avatarUrl ? (
+            <img src={user.avatarUrl} alt={user?.name || 'User'} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-muted-foreground">
+              {initials || 'U'}
+            </div>
+          )}
         </button>
       </div>
     </header>
