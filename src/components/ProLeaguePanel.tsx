@@ -39,7 +39,7 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
       <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-card via-card to-emerald-500/5 p-4 sm:p-5 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex w-full items-center justify-between gap-2">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">{contest.title}</p>
               <button
                 type="button"
@@ -151,12 +151,12 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
                     <p className="truncate text-xs text-muted-foreground">
                       {contestStarted
                         ? displayRank === 1
-                          ? "Wins ₹10,000"
+                          ? "Winning ₹10,000"
                           : displayRank === 2
-                            ? "Wins ₹5,000"
+                            ? "Winning ₹5,000"
                             : displayRank === 3
-                              ? "Wins ₹2,000"
-                              : row.email
+                              ? "Winning ₹2,000"
+                              : "Joined"
                         : "Joined"}
                     </p>
                   </div>

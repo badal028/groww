@@ -23,6 +23,8 @@ import {
   getAllUsers,
   getAllContests,
   upsertContest,
+  readAllData,
+  writeAllData,
 } from "./store.js";
 import { attachMarketStream, bumpMarketStreamResync } from "./marketStream.js";
 
@@ -107,6 +109,11 @@ const ensureUserFinancials = (u) => ({
   withdrawalRequests: Array.isArray(u.withdrawalRequests) ? u.withdrawalRequests : [],
   cashfreePayments: Array.isArray(u.cashfreePayments) ? u.cashfreePayments : [],
 });
+
+const isSeededUser = (u) => {
+  const email = String(u?.email || "").toLowerCase();
+  return Boolean(u?.isSeeded) || email.endsWith("@growwseed.local");
+};
 
 const currentContestOrCreate = () => {
   const today = activeContestDateISO();
@@ -1292,11 +1299,14 @@ app.patch("/auth/profile", authMiddleware, (req, res) => {
 
 app.get("/contest/current", authMiddleware, (req, res) => {
   const contest = currentContestOrCreate();
+  const maxCap = Number(contest.maxParticipants || maxContestParticipants);
+  const participantsRaw = Array.isArray(contest.participants) ? contest.participants : [];
+  const participants = participantsRaw.slice(0, Math.max(0, maxCap));
   const uid = req.user.id;
-  const joined = Array.isArray(contest.participants) && contest.participants.some((p) => p.userId === uid);
+  const joined = participants.some((p) => p.userId === uid);
   return res.json({
     status: "ok",
-    contest,
+    contest: { ...contest, participants },
     joined,
     realWalletInr: Number(req.user.realWalletInr || 0),
   });
@@ -1323,11 +1333,16 @@ app.post("/contest/join", authMiddleware, (req, res) => {
     updatedAt: new Date().toISOString(),
   }));
   if (!updatedUser) return res.status(404).json({ status: "error", message: "User not found" });
-  const updatedContest = upsertContest(contest.id, (prev) => ({
-    ...prev,
-    participants: [...(prev?.participants || []), { userId: req.user.id, joinedAt: new Date().toISOString() }],
-    updatedAt: new Date().toISOString(),
-  }));
+  const updatedContest = upsertContest(contest.id, (prev) => {
+    const maxCap = Number(prev?.maxParticipants || maxContestParticipants);
+    const prevParticipants = Array.isArray(prev?.participants) ? prev.participants : [];
+    if (prevParticipants.length >= maxCap) return { ...prev, updatedAt: new Date().toISOString() };
+    return {
+      ...prev,
+      participants: [...prevParticipants, { userId: req.user.id, joinedAt: new Date().toISOString() }].slice(0, maxCap),
+      updatedAt: new Date().toISOString(),
+    };
+  });
   return res.json({
     status: "ok",
     contest: updatedContest,
@@ -1337,8 +1352,9 @@ app.post("/contest/join", authMiddleware, (req, res) => {
 
 app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
   const contest = currentContestOrCreate();
-  const participants = Array.isArray(contest.participants) ? contest.participants : [];
-  const minParticipants = Number(contest.minParticipants || minContestParticipants);
+  const maxCap = Number(contest.maxParticipants || maxContestParticipants);
+  const participants = (Array.isArray(contest.participants) ? contest.participants : []).slice(0, Math.max(0, maxCap));
+  const minParticipants = Math.max(1, Number(contest.minParticipants || minContestParticipants));
   const contestStarted = participants.length >= minParticipants;
   const joinedAtByUserId = new Map(
     participants.map((p) => [String(p.userId), String(p.joinedAt || "")]),
@@ -1365,7 +1381,7 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
     const me = leaderboard.find((x) => x.userId === req.user.id) || null;
     return res.json({
       status: "ok",
-      contest,
+      contest: { ...contest, participants },
       leaderboard,
       myRank: null,
       participantCount: participants.length,
@@ -1420,7 +1436,7 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
   const me = leaderboard.find((x) => x.userId === req.user.id) || null;
   return res.json({
     status: "ok",
-    contest,
+    contest: { ...contest, participants },
     leaderboard,
     myRank: me?.rank || null,
     participantCount: participants.length,
@@ -1447,7 +1463,7 @@ app.get("/paper/positions", authMiddleware, (req, res) => {
 // Admin (paper data only)
 // -------------------------
 app.get("/admin/summary/today", authMiddleware, ensureAdmin, (req, res) => {
-  const users = getAllUsers();
+  const users = getAllUsers().filter((u) => !isSeededUser(u));
   const today = isoDateInIST(new Date());
   const signupsToday = users.filter((u) => isoDateInIST(u.createdAt) === today);
   return res.json({
@@ -1460,7 +1476,7 @@ app.get("/admin/summary/today", authMiddleware, ensureAdmin, (req, res) => {
 
 /** Last N calendar days (IST) with signup counts and emails — for admin table. */
 app.get("/admin/signups/daily", authMiddleware, ensureAdmin, (req, res) => {
-  const users = getAllUsers();
+  const users = getAllUsers().filter((u) => !isSeededUser(u));
   const days = Math.min(90, Math.max(1, Number(req.query.days || 14)));
   const dates = [];
   for (let i = days - 1; i >= 0; i -= 1) {
@@ -1481,7 +1497,7 @@ app.get("/admin/signups/daily", authMiddleware, ensureAdmin, (req, res) => {
 });
 
 app.get("/admin/users", authMiddleware, ensureAdmin, (req, res) => {
-  const users = getAllUsers();
+  const users = getAllUsers().filter((u) => !isSeededUser(u));
   return res.json({
     status: "ok",
     users: users.map((u) => ({
@@ -1551,7 +1567,9 @@ app.post("/admin/withdrawals/:userId/:requestId/reject", authMiddleware, ensureA
 
 app.get("/admin/contest/current", authMiddleware, ensureAdmin, (req, res) => {
   const contest = currentContestOrCreate();
-  return res.json({ status: "ok", contest });
+  const maxCap = Number(contest.maxParticipants || maxContestParticipants);
+  const participants = (Array.isArray(contest.participants) ? contest.participants : []).slice(0, Math.max(0, maxCap));
+  return res.json({ status: "ok", contest: { ...contest, participants } });
 });
 
 app.post("/admin/contest/seed-dummy", authMiddleware, ensureAdmin, async (req, res) => {
@@ -1819,17 +1837,20 @@ app.post("/admin/contest/seed-dummy", authMiddleware, ensureAdmin, async (req, r
       positions: [],
       withdrawalRequests: [],
       cashfreePayments: [],
+      isSeeded: true,
+      seededAt: nowISO,
     });
     dummyUsers.push({ id, name, email });
   }
 
   const joinedAt = nowISO;
   const updatedContest = upsertContest(contest.id, (prev) => {
+    const maxCap = Number(prev?.maxParticipants || maxContestParticipants);
     const prevParticipants = Array.isArray(prev?.participants) ? prev.participants : [];
     const nextParticipants = [
       ...prevParticipants,
       ...dummyUsers.map((u) => ({ userId: u.id, joinedAt })),
-    ];
+    ].slice(0, Math.max(0, maxCap));
     return {
       ...prev,
       participants: nextParticipants,
@@ -1838,6 +1859,36 @@ app.post("/admin/contest/seed-dummy", authMiddleware, ensureAdmin, async (req, r
   });
 
   return res.json({ status: "ok", contest: updatedContest, added: dummyUsers.length });
+});
+
+app.post("/admin/contest/unseed-dummy", authMiddleware, ensureAdmin, (req, res) => {
+  const contest = currentContestOrCreate();
+  const contestId = contest?.id;
+  if (!contestId) return res.status(400).json({ status: "error", message: "Contest not found" });
+
+  const db = readAllData();
+  const users = Array.isArray(db.users) ? db.users : [];
+  const seededIds = new Set(users.filter((u) => isSeededUser(u)).map((u) => u.id));
+  const keptUsers = users.filter((u) => !seededIds.has(u.id));
+
+  const contests = Array.isArray(db.contests) ? db.contests : [];
+  const nextContests = contests.map((c) => {
+    if (c.id !== contestId) return c;
+    const maxCap = Number(c.maxParticipants || maxContestParticipants);
+    const prunedParticipants = (Array.isArray(c.participants) ? c.participants : [])
+      .filter((p) => !seededIds.has(p.userId))
+      .slice(0, Math.max(0, maxCap));
+    return {
+      ...c,
+      participants: prunedParticipants,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+
+  writeAllData({ users: keptUsers, contests: nextContests });
+  const fresh = getAllContests().find((c) => c.id === contestId) || currentContestOrCreate();
+  const removed = users.length - keptUsers.length;
+  return res.json({ status: "ok", contest: fresh, removed });
 });
 
 app.post("/admin/contest/config", authMiddleware, ensureAdmin, (req, res) => {
@@ -1961,7 +2012,7 @@ app.get("/admin/users/:id/positions", authMiddleware, ensureAdmin, (req, res) =>
 });
 
 app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
-  const users = getAllUsers();
+  const users = getAllUsers().filter((u) => !isSeededUser(u));
 
   const realizedByUser = new Map();
   for (const u of users) {

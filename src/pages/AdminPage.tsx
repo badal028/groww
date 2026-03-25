@@ -545,6 +545,44 @@ export default function AdminPage() {
                 >
                   Feed 300 users
                 </button>
+                <button
+                  type="button"
+                  className="rounded border border-loss/40 px-3 py-1 text-[11px] text-loss hover:bg-loss/10"
+                  onClick={async () => {
+                    const r = await fetch(`${apiBase}/admin/contest/unseed-dummy`, {
+                      method: "POST",
+                      headers: authHeaders,
+                    });
+                    const d = await r.json().catch(() => ({}));
+                    if (!r.ok) return setErr(d?.message || "Unseed failed");
+                    setContest(d?.contest || null);
+                    toast.success(`Removed ${d?.removed ?? 0} seeded users`);
+                    const [sRes, dRes, uRes, cRes] = await Promise.all([
+                      fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
+                      fetch(`${apiBase}/admin/signups/daily?days=14`, { headers: authHeaders }),
+                      fetch(`${apiBase}/admin/users/pnl`, { headers: authHeaders }),
+                      fetch(`${apiBase}/admin/contest/current`, { headers: authHeaders }),
+                    ]);
+                    if (sRes.ok) {
+                      const sData = await sRes.json().catch(() => null);
+                      if (sData) setSummary(sData);
+                    }
+                    if (dRes.ok) {
+                      const dData = await dRes.json().catch(() => null);
+                      if (dData?.rows) setDailyRows(dData.rows);
+                    }
+                    if (uRes.ok) {
+                      const uData = await uRes.json().catch(() => null);
+                      if (uData?.users) setUsers(uData.users);
+                    }
+                    if (cRes.ok) {
+                      const cData = await cRes.json().catch(() => null);
+                      if (cData?.contest) setContest(cData.contest);
+                    }
+                  }}
+                >
+                  Unseed users
+                </button>
               </div>
 
               {!!contest.payouts?.length && (
