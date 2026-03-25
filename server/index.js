@@ -109,11 +109,21 @@ const ensureUserFinancials = (u) => ({
 
 const currentContestOrCreate = () => {
   const today = activeContestDateISO();
+  const all = getAllContests();
+
+  // If someone already joined an OPEN contest, keep using that same contest
+  // (do not roll to next day) until admin finalizes it.
+  const openWithParticipants = all
+    .filter((c) => c?.status === "OPEN" && Array.isArray(c.participants) && c.participants.length > 0)
+    .sort((a, b) => Date.parse(b.updatedAt || b.createdAt || "") - Date.parse(a.updatedAt || a.createdAt || ""));
+
+  if (openWithParticipants.length) return openWithParticipants[0];
+
   const id = `contest-${today}`;
-  const created = upsertContest(id, (prev) => {
+  return upsertContest(id, (prev) => {
     if (prev) {
-      // Keep participants/payouts intact; just refresh updatedAt.
-      return { ...prev, updatedAt: new Date().toISOString() };
+      // No participants in any existing OPEN contest; safe to refresh.
+      return { ...prev, contestDateISO: today, updatedAt: new Date().toISOString() };
     }
     return {
       id,
@@ -130,7 +140,6 @@ const currentContestOrCreate = () => {
       updatedAt: new Date().toISOString(),
     };
   });
-  return created;
 };
 
 const parseExpiryToISO = (expiryLabel) => {
