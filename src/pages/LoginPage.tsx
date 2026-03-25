@@ -84,7 +84,6 @@ const LoginPage: React.FC = () => {
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6">
         <div className="mb-6 flex items-center justify-between">
           <GrowwLogo size={32} />
-          <span className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">Paper Trading</span>
         </div>
 
         <h1 className="mb-1 text-2xl font-semibold text-foreground">
@@ -92,7 +91,7 @@ const LoginPage: React.FC = () => {
         </h1>
         <p className="mb-6 text-sm text-muted-foreground">
           {mode === 'login'
-            ? 'Login to continue paper trading'
+            ? 'Login to continue earning'
             : 'Get ₹1,00,00,000 virtual balance on signup'}
         </p>
 
