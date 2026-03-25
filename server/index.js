@@ -6,10 +6,11 @@ import jwt from "jsonwebtoken";
 import { createHmac, randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
+const KITE_AUTH_FILE = path.join(repoRoot, "server", "data", "kiteAuth.json");
 import { createServer } from "node:http";
 import { KiteConnect } from "kiteconnect";
 import { OAuth2Client } from "google-auth-library";
@@ -531,6 +532,30 @@ let auth = {
   userId: null,
   updatedAt: null,
 };
+
+// Persist Kite access token so the server restart doesn't force re-login every time.
+try {
+  if (existsSync(KITE_AUTH_FILE)) {
+    const raw = readFileSync(KITE_AUTH_FILE, "utf-8");
+    const saved = JSON.parse(raw);
+    if (saved?.accessToken) {
+      auth = {
+        ...auth,
+        accessToken: saved.accessToken,
+        publicToken: saved.publicToken || null,
+        userId: saved.userId || null,
+        updatedAt: saved.updatedAt || new Date().toISOString(),
+      };
+      kite.setAccessToken(saved.accessToken);
+      // eslint-disable-next-line no-console
+      console.log("[Kite] Restored persisted access token from disk");
+      // Kick market stream sync if your helper depends on auth.accessToken.
+      bumpMarketStreamResync();
+    }
+  }
+} catch {
+  // ignore disk issues
+}
 
 app.use(
   cors({
@@ -1335,14 +1360,14 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
       email: u.email,
       avatarUrl: u.avatarUrl || null,
       totalPnlInr: 0,
-      rank: idx + 1,
+      rank: null,
     }));
     const me = leaderboard.find((x) => x.userId === req.user.id) || null;
     return res.json({
       status: "ok",
       contest,
       leaderboard,
-      myRank: me?.rank || null,
+      myRank: null,
       participantCount: participants.length,
     });
   }
@@ -1429,7 +1454,7 @@ app.get("/admin/summary/today", authMiddleware, ensureAdmin, (req, res) => {
     status: "ok",
     today,
     signupsTodayCount: signupsToday.length,
-    signupsToday: signupsToday.map((u) => ({ id: u.id, email: u.email })),
+    signupsToday: signupsToday.map((u) => ({ id: u.id, email: u.email, createdAt: u.createdAt })),
   });
 });
 
@@ -1446,7 +1471,7 @@ app.get("/admin/signups/daily", authMiddleware, ensureAdmin, (req, res) => {
     const d = isoDateInIST(u.createdAt);
     if (!d) continue;
     if (!byDate.has(d)) byDate.set(d, []);
-    byDate.get(d).push({ id: u.id, email: u.email });
+    byDate.get(d).push({ id: u.id, email: u.email, createdAt: u.createdAt });
   }
   const rows = dates.map((date) => {
     const signups = byDate.get(date) || [];
@@ -1527,6 +1552,292 @@ app.post("/admin/withdrawals/:userId/:requestId/reject", authMiddleware, ensureA
 app.get("/admin/contest/current", authMiddleware, ensureAdmin, (req, res) => {
   const contest = currentContestOrCreate();
   return res.json({ status: "ok", contest });
+});
+
+app.post("/admin/contest/seed-dummy", authMiddleware, ensureAdmin, async (req, res) => {
+  const requestedCount = Number(req.body?.count || 250);
+  const count = Number.isFinite(requestedCount) && requestedCount > 0 ? Math.floor(requestedCount) : 250;
+
+  const contest = currentContestOrCreate();
+  if (!contest || contest.status !== "OPEN") {
+    return res.status(400).json({ status: "error", message: "No OPEN contest to seed" });
+  }
+
+  const participants = Array.isArray(contest.participants) ? contest.participants : [];
+  const remaining = Math.max(0, Number(contest.maxParticipants || maxContestParticipants) - participants.length);
+  const toAdd = Math.min(count, remaining);
+
+  if (toAdd <= 0) return res.json({ status: "ok", contest, added: 0 });
+
+  // Avoid name repetition within a seeded batch.
+  const seedFirstNames = [
+    "Ramesh",
+    "Pooja Patel",
+    "Nitin Yadav",
+    "Kavita",
+    "Imran Khan",
+    "Meena Prajapati",
+    "Suresh",
+    "Aarti Shah",
+    "Raju Bharwad",
+    "Neha",
+    "Manoj Singh",
+    "Farida",
+    "Jignesh Patel",
+    "Rekha",
+    "Salim Khan",
+    "Heena Mistry",
+    "Ashok",
+    "Kiran Desai",
+    "Bharat",
+    "Shabnam",
+    "Prakash Yadav",
+    "Pinal Patel",
+    "Dinesh",
+    "Nagma",
+    "Yusuf Khan",
+    "Bhavna",
+    "Mahesh Prajapati",
+    "Rupal",
+    "Sameer Khan",
+    "Usha",
+    "Rajesh",
+    "Sonal Shah",
+    "Gopal Bharwad",
+    "Anita",
+    "Kunal Patel",
+    "Tasneem",
+    "Vinod",
+    "Jyoti",
+    "Arvind Yadav",
+    "Zoya Khan",
+    "Sandeep",
+    "Komal",
+    "Mukesh Patel",
+    "Seema",
+    "Rashid Khan",
+    "Daksha",
+    "Harish",
+    "Neelam",
+    "Paresh Shah",
+    "Mariam",
+    "Chandan",
+    "Rachna",
+    "Altaf Khan",
+    "Kalpana",
+    "Bhupendra Patel",
+    "Rina",
+    "Sohail Khan",
+    "Priti",
+    "Naresh",
+    "Hina",
+    "Tejas Shah",
+    "Varsha",
+    "Javed Khan",
+    "Leena",
+    "Rakesh",
+    "Suman",
+    "Nilesh Patel",
+    "Rubina",
+    "Iqbal Khan",
+    "Bina",
+    "Ajay",
+    "Payal",
+    "Pravin Shah",
+    "Farhan Khan",
+    "Shilpa",
+    "Dilip",
+    "Charu",
+    "Keshav Yadav",
+    "Afreen",
+    "Mohan",
+    "Gita",
+    "Junaid Khan",
+    "Sheetal",
+    "Jagdish",
+    "Ritu",
+    "Hasmukh Patel",
+    "Saba",
+    "Sanjay",
+    "Kanchan",
+    "Parvez Khan",
+    "Radhika",
+    "Hemant",
+    "Maya",
+    "Bipin Patel",
+    "Reshma",
+    "Tariq Khan",
+    "Alpa",
+    "Rohit",
+    "Kavya",
+    "Nadeem Khan",
+    "Sarita",
+    "Ghanshyam",
+    "Manisha",
+    "Wasim Khan",
+    "Kamini",
+    "Vikas",
+    "Sharda",
+    "Adil Khan",
+    "Heena",
+    "Umesh",
+    "Lakshmi",
+    "Danish Khan",
+    "Poonam",
+    "Om",
+    "Nirmala",
+    "Nawaz Khan",
+    "Bharti",
+    "Ritesh",
+    "Sejal",
+    "Shahid Khan",
+    "Trupti",
+    "Chetan Patel",
+    "Urmila",
+    "Zubair Khan",
+    "Asha",
+    "Tarun",
+    "Nayana",
+    "Faizal Khan",
+    "Meera",
+    "Raj",
+    "Kusum",
+    "Aslam Khan",
+    "Pinky",
+    "Mahendra",
+    "Deepak",
+    "Nasreen",
+    "Pradeep",
+    "Vandana",
+    "Irfan Khan",
+    "Babita",
+    "Rohan",
+    "Shyam Yadav",
+    "Amina Khan",
+    "Yogesh",
+    "Kiran",
+    "Gaurav",
+    "Feroza Khan",
+    "Harendra",
+    "Anita Patel",
+    "Kamal",
+    "Rukhsar Khan",
+    "Suraj",
+    "Hema",
+    "Jayesh Patel",
+    "Tabassum Khan",
+    "Lata",
+    "Mukund",
+    "Nisha",
+    "Rafiq Khan",
+    "Chandrakant",
+    "Priti Patel",
+    "Manoj",
+    "Yasmin Khan",
+    "Ajit",
+    "Aarti",
+    "Harpreet Singh",
+    "Simran Kaur",
+    "Gurpreet Singh",
+    "Manpreet",
+    "Kuldeep Singh",
+    "Jaspreet Kaur",
+    "Balwinder Singh",
+    "Harleen",
+    "Sukhwinder Singh",
+    "Navjot",
+    "Amarjeet Singh",
+    "Rupinder Kaur",
+    "Paramjit Singh",
+    "Kirandeep",
+    "Gagandeep Singh",
+    "Jasleen",
+    "Surjit Singh",
+    "Inderjeet",
+    "Daljit Singh",
+    "Kamaldeep",
+    "Hardeep Singh",
+    "Amrit",
+    "Ravinder Singh",
+    "Gurleen",
+    "Jagjit Singh",
+    "Baljeet",
+    "Sandeep Singh",
+    "Charanjeet",
+    "Rajbir Singh",
+    "Amandeep",
+    "Pritam Singh",
+    "Kulwinder",
+    "Mohinder Singh",
+    "Harjit",
+    "Tejinder Singh",
+    "Jaspal",
+    "Surinder Singh",
+    "Manjeet",
+    "Satnam Singh",
+    "Balraj Singh",
+    "Kanchan",
+    "Radhika",
+    "Amandeep Kaur",
+    "Gurvinder Singh",
+  ];
+
+  const existingEmails = new Set(getAllUsers().map((u) => String(u.email || "").toLowerCase()));
+  const nowISO = new Date().toISOString();
+  const dummyPasswordHash = await bcrypt.hash("dummyPassword123", 10);
+
+  const usedNames = new Set();
+  const dummyUsers = [];
+
+  for (let i = 0; i < toAdd; i += 1) {
+    const baseName = seedFirstNames[i % seedFirstNames.length] || `Dummy User ${i + 1}`;
+    let name = String(baseName).trim();
+    if (!name) name = `Dummy User ${i + 1}`;
+
+    // Ensure no repetition within this seeded batch.
+    if (usedNames.has(name)) name = `${name} ${i + 1}`;
+    usedNames.add(name);
+
+    let email = `seed-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}-${i + 1}@growwseed.local`;
+    email = email.slice(0, 120).toLowerCase();
+    if (existingEmails.has(email)) email = `seed-${randomUUID().slice(0, 8)}-${i + 1}@growwseed.local`;
+    existingEmails.add(email);
+
+    const id = randomUUID();
+    createUser({
+      id,
+      name,
+      email,
+      passwordHash: dummyPasswordHash,
+      walletInr: defaultWalletBalance,
+      realWalletInr: 0,
+      realizedPnlInr: 0,
+      avatarUrl: null,
+      createdAt: nowISO,
+      updatedAt: nowISO,
+      orders: [],
+      positions: [],
+      withdrawalRequests: [],
+      cashfreePayments: [],
+    });
+    dummyUsers.push({ id, name, email });
+  }
+
+  const joinedAt = nowISO;
+  const updatedContest = upsertContest(contest.id, (prev) => {
+    const prevParticipants = Array.isArray(prev?.participants) ? prev.participants : [];
+    const nextParticipants = [
+      ...prevParticipants,
+      ...dummyUsers.map((u) => ({ userId: u.id, joinedAt })),
+    ];
+    return {
+      ...prev,
+      participants: nextParticipants,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+
+  return res.json({ status: "ok", contest: updatedContest, added: dummyUsers.length });
 });
 
 app.post("/admin/contest/config", authMiddleware, ensureAdmin, (req, res) => {
@@ -1625,18 +1936,27 @@ app.post("/admin/contest/release", authMiddleware, ensureAdmin, (req, res) => {
 app.get("/admin/users/:id/orders", authMiddleware, ensureAdmin, (req, res) => {
   const user = getUserById(req.params.id);
   if (!user) return res.status(404).json({ status: "error", message: "User not found" });
+  const orders = Array.isArray(user.orders) ? user.orders : [];
+  orders.sort((a, b) => Date.parse(b.filledAt || "") - Date.parse(a.filledAt || ""));
   return res.json({
     status: "ok",
-    orders: Array.isArray(user.orders) ? user.orders : [],
+    orders,
   });
 });
 
 app.get("/admin/users/:id/positions", authMiddleware, ensureAdmin, (req, res) => {
   const user = getUserById(req.params.id);
   if (!user) return res.status(404).json({ status: "error", message: "User not found" });
+  const positions = Array.isArray(user.positions) ? user.positions : [];
+  // Latest activity first: prefer lastTradedAt, else exitedAt, else openedAt.
+  positions.sort((a, b) => {
+    const ta = Date.parse(a.lastTradedAt || a.exitedAt || a.openedAt || "");
+    const tb = Date.parse(b.lastTradedAt || b.exitedAt || b.openedAt || "");
+    return tb - ta;
+  });
   return res.json({
     status: "ok",
-    positions: Array.isArray(user.positions) ? user.positions : [],
+    positions,
   });
 });
 
@@ -1661,6 +1981,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
         id: u.id,
         name: u.name,
         email: u.email,
+        createdAt: u.createdAt,
         walletInr: Number(u.walletInr ?? 0),
         realWalletInr: Number(u.realWalletInr ?? 0),
         realizedPnlInr: Number(u.realizedPnlInr ?? 0),
@@ -1697,6 +2018,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
           id: u.id,
           name: u.name,
           email: u.email,
+          createdAt: u.createdAt,
           walletInr: Number(u.walletInr ?? 0),
           realWalletInr: Number(u.realWalletInr ?? 0),
           realizedPnlInr: Number(u.realizedPnlInr ?? 0),
@@ -1728,6 +2050,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
           id: u.id,
           name: u.name,
           email: u.email,
+          createdAt: u.createdAt,
           walletInr: Number(u.walletInr ?? 0),
           realWalletInr: Number(u.realWalletInr ?? 0),
           realizedPnlInr: realized,
@@ -1756,6 +2079,7 @@ app.post("/paper/position/close", authMiddleware, (req, res) => {
       return res.status(400).json({ status: "error", message: "instrumentKey is required" });
     }
     let lineRealizedOut = 0;
+    const nowISO = new Date().toISOString();
     const updated = updateUser(req.user.id, (prev) => {
       const positions = prev.positions || [];
       const idx = positions.findIndex((p) => p.instrumentKey === instrumentKey);
@@ -1780,6 +2104,7 @@ app.post("/paper/position/close", authMiddleware, (req, res) => {
         avgPrice: 0,
         exited: true,
         exitedAt: new Date().toISOString(),
+        lastTradedAt: nowISO,
         exitPrice: Number(exitPx.toFixed(2)),
         realizedPnlInr: lineRealized,
       };
@@ -1861,6 +2186,7 @@ app.post("/paper/order", authMiddleware, (req, res) => {
       const orders = prev.orders || [];
       const positions = prev.positions || [];
       let walletInr = Number(prev.walletInr || 0);
+      const nowISO = new Date().toISOString();
 
       const posIdx = positions.findIndex(
         (p) =>
@@ -1889,7 +2215,12 @@ app.post("/paper/order", authMiddleware, (req, res) => {
               quantity: 0,
               avgPrice: 0,
               kiteSymbol: kiteSymNorm || undefined,
+              openedAt: nowISO,
+              lastTradedAt: nowISO,
             };
+      // If this position predates our timestamp fields, initialize them once.
+      if (!existingPos.openedAt) existingPos.openedAt = nowISO;
+      existingPos.lastTradedAt = nowISO;
       if (kiteSymNorm) existingPos.kiteSymbol = kiteSymNorm;
 
       if (orderPayload.side === "BUY") {
@@ -1968,6 +2299,13 @@ app.get("/kite/callback", async (req, res) => {
     };
     kite.setAccessToken(session.access_token);
     bumpMarketStreamResync();
+
+    // Persist for next server restart.
+    try {
+      writeFileSync(KITE_AUTH_FILE, JSON.stringify(auth, null, 2), "utf-8");
+    } catch {
+      // ignore
+    }
 
     return res.send(`
       <html>
@@ -2266,6 +2604,11 @@ app.get("/api/options-chain", ensureAuth, async (req, res) => {
 
 app.post("/kite/logout", (_req, res) => {
   auth = { accessToken: null, publicToken: null, userId: null, updatedAt: null };
+  try {
+    if (existsSync(KITE_AUTH_FILE)) unlinkSync(KITE_AUTH_FILE);
+  } catch {
+    // ignore
+  }
   res.json({ status: "ok" });
 });
 

@@ -22,7 +22,7 @@ export type LeaderboardRow = {
   email: string;
   avatarUrl?: string | null;
   totalPnlInr: number;
-  rank: number;
+  rank: number | null;
 };
 
 export function useProLeague() {

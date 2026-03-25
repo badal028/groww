@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProLeague } from "@/hooks/useProLeague";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Eye } from "lucide-react";
+import { Info } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 function inr(n: number) {
@@ -32,6 +32,7 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
   if (!contest) return <div className="py-6 text-sm text-muted-foreground">Contest is not available.</div>;
 
   const canJoin = !joined && contest.status === "OPEN";
+  const yourRankText = contestStarted ? `${myRank ?? "-"}` : "-";
 
   return (
     <div className={cn("space-y-4", compact ? "px-0" : "")}>
@@ -44,9 +45,9 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
                 type="button"
                 aria-label="How Pro-League works"
                 onClick={() => setRulesOpen(true)}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-muted/50"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted/30 border border-border text-foreground hover:bg-muted/50"
               >
-                <Eye className="h-3.5 w-3.5" />
+                <Info className="h-3.5 w-3.5" />
               </button>
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground sm:text-xs">
@@ -66,7 +67,7 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
           </div>
           <div className="rounded-lg border border-border bg-background px-2 py-2">
             <p className="text-muted-foreground">Your rank</p>
-            <p className="font-semibold text-foreground">{myRank ?? "-"}</p>
+            <p className="font-semibold text-foreground">{yourRankText}</p>
           </div>
         </div>
 
@@ -127,23 +128,23 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
           >
             <div className="divide-y divide-border">
             {visibleRows.map((row, idx) => {
-              const displayRank = idx + 1;
+              const displayRank = contestStarted ? idx + 1 : null;
               return (
               <div
                 key={row.userId}
                 className={cn(
                   "flex items-center justify-between gap-3 px-4 py-3 transition-colors",
-                  contestStarted && displayRank <= 3 ? "bg-emerald-500/10" : "hover:bg-muted/30",
+                  contestStarted && displayRank != null && displayRank <= 3 ? "bg-emerald-500/10" : "hover:bg-muted/30",
                 )}
               >
                 <div className="min-w-0 flex items-center gap-3">
                   <div className={cn(
                     "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                    contestStarted && displayRank <= 3
+                    contestStarted && displayRank != null && displayRank <= 3
                       ? "bg-emerald-500/20 text-emerald-400"
                       : "bg-muted text-muted-foreground",
                   )}>
-                    {displayRank}
+                    {displayRank ?? "—"}
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-foreground">{row.name}</p>
