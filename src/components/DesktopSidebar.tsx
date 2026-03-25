@@ -55,6 +55,45 @@ const DesktopSidebar: React.FC = () => {
           {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
         </button>
+
+        {/* Policy links for whitelisting (desktop only). */}
+        <div className="mt-3">
+          <details className="group">
+            <summary className="cursor-pointer select-none px-3 text-[11px] font-medium text-muted-foreground opacity-70 hover:opacity-100">
+              Policies
+            </summary>
+            <div className="mt-2 space-y-1 px-1">
+              <button
+                type="button"
+                onClick={() => navigate("/contact-us")}
+                className="block w-full rounded-lg px-3 py-2 text-left text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                Contact Us
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/terms-and-conditions")}
+                className="block w-full rounded-lg px-3 py-2 text-left text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                Terms &amp; Conditions
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/refunds-cancellations")}
+                className="block w-full rounded-lg px-3 py-2 text-left text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                Refunds &amp; Cancellations
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/other-details")}
+                className="block w-full rounded-lg px-3 py-2 text-left text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                Other Details
+              </button>
+            </div>
+          </details>
+        </div>
       </div>
     </aside>
   );

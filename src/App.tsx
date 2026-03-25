@@ -12,6 +12,10 @@ import StockDetailPage from "./pages/StockDetailPage";
 import MutualFundsPage from "./pages/MutualFundsPage";
 import ProfilePage from "./pages/ProfilePage";
 import AdminPage from "./pages/AdminPage";
+import ContactUsPage from "./pages/ContactUsPage";
+import TermsConditionsPage from "./pages/TermsConditionsPage";
+import RefundsCancellationsPage from "./pages/RefundsCancellationsPage";
+import OtherDetailsPage from "./pages/OtherDetailsPage";
 import DesktopSidebar from "./components/DesktopSidebar";
 import NotFound from "./pages/NotFound.tsx";
 
@@ -48,6 +52,10 @@ const AppLayout = () => {
           <Route path="/mutual-funds" element={<MutualFundsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/contact-us" element={<ContactUsPage />} />
+          <Route path="/terms-and-conditions" element={<TermsConditionsPage />} />
+          <Route path="/refunds-cancellations" element={<RefundsCancellationsPage />} />
+          <Route path="/other-details" element={<OtherDetailsPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
