@@ -4,6 +4,10 @@ export function initGoogleAnalytics() {
   if (!id || typeof window === "undefined") return;
 
   const w = window as Window & { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void };
+  const alreadyLoaded =
+    typeof w.gtag === "function" ||
+    Boolean(document.querySelector(`script[src*="googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}"]`));
+  if (alreadyLoaded) return;
   w.dataLayer = w.dataLayer || [];
   w.gtag = function gtag(...args: unknown[]) {
     w.dataLayer!.push(args);

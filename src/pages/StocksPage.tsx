@@ -90,9 +90,13 @@ const StocksPage: React.FC = () => {
         const r = await fetch(`${apiBase}/api/market-banner`);
         const d = await r.json().catch(() => ({}));
         if (cancelled || !r.ok) return;
+        const fallbackMessage =
+          d?.closedOn || d?.opensAt
+            ? `Please note that markets are closed on ${d?.closedOn || "the scheduled date"} and will open at ${d?.opensAt || "the scheduled time"}.`
+            : "";
         setMarketBanner({
-          enabled: Boolean(d?.enabled && d?.message),
-          message: String(d?.message || ''),
+          enabled: Boolean(d?.enabled),
+          message: String(d?.message || fallbackMessage),
         });
       } catch {
         /* ignore */
