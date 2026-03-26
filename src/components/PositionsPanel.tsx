@@ -64,11 +64,9 @@ type Props = {
 
 const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compact }) => {
   const navigate = useNavigate();
-  const { token, refreshMe, user } = useAuth();
+  const { token, refreshMe } = useAuth();
   const [exitingKey, setExitingKey] = useState<string | null>(null);
   const { mktByInstrumentKey } = usePositionMktPrices(positions);
-
-  const realizedPnl = Number(user?.realizedPnlInr ?? 0);
 
   const rows = useMemo(() => {
     return positions
@@ -94,11 +92,9 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
       });
   }, [positions, mktByInstrumentKey]);
 
-  const openPnl = useMemo(
-    () => rows.filter((r) => !r.p.exited).reduce((s, r) => s + r.pnl, 0),
-    [rows],
-  );
-  const totalPnl = realizedPnl + openPnl;
+  // Total P&L in Positions should reflect visible rows only:
+  // open MTM + today's exited realized rows. Old exited rows are pruned by backend.
+  const totalPnl = useMemo(() => rows.reduce((s, r) => s + r.pnl, 0), [rows]);
 
   const exitPositionAt = useCallback(
     async (instrumentKey: string, exitPrice: number, p: PaperPosition) => {
