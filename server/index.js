@@ -134,15 +134,70 @@ const currentPracticeContestForApi = () => {
   };
 };
 
-const simpleLeaderboardForUsers = (users) => {
+const isSameISTDay = (dateLike, dayISO) => {
+  if (!dateLike || !dayISO) return false;
+  return isoDateInIST(dateLike) === dayISO;
+};
+
+const isDailyOpenPosition = (p, dayISO) => {
+  const qty = Number(p?.quantity || 0);
+  const avg = Number(p?.avgPrice || 0);
+  if (!(qty > 0 && avg > 0)) return false;
+  if (Boolean(p?.exited)) return false;
+  const anchor = p?.openedAt || p?.lastTradedAt || p?.createdAt;
+  return isSameISTDay(anchor, dayISO);
+};
+
+const collectQuoteSymbolsForDay = (users, dayISO) => {
+  const symbols = [];
+  for (const u of Array.isArray(users) ? users : []) {
+    for (const p of u?.positions || []) {
+      if (!isDailyOpenPosition(p, dayISO)) continue;
+      const k = resolveKiteSymbolFromPosition(p);
+      if (k) symbols.push(k);
+    }
+  }
+  return [...new Set(symbols)];
+};
+
+const getQuotesForUsersDay = async (users, dayISO) => {
+  const symbols = collectQuoteSymbolsForDay(users, dayISO);
+  if (!symbols.length || !auth.accessToken) return {};
+  try {
+    kite.setAccessToken(auth.accessToken);
+    return await kite.getQuote(symbols);
+  } catch {
+    return {};
+  }
+};
+
+const dailyContestLeaderboardForUsers = (users, dayISO, quotes) => {
   return [...(Array.isArray(users) ? users : [])]
-    .map((u) => ({
-      userId: u.id,
-      name: u.name,
-      email: u.email,
-      avatarUrl: u.avatarUrl || null,
-      totalPnlInr: Number(u.realizedPnlInr || 0),
-    }))
+    .map((u) => {
+      let realizedToday = 0;
+      let openToday = 0;
+      for (const p of u?.positions || []) {
+        if (Boolean(p?.exited) && isSameISTDay(p?.exitedAt, dayISO)) {
+          realizedToday += Number(p?.realizedPnlInr || 0);
+          continue;
+        }
+        if (!isDailyOpenPosition(p, dayISO)) continue;
+        const qty = Number(p?.quantity || 0);
+        const avg = Number(p?.avgPrice || 0);
+        const k = resolveKiteSymbolFromPosition(p);
+        const q = k ? quotes?.[k] : null;
+        const lp = Number(q?.last_price ?? q?.lastPrice ?? q?.ltp ?? q?.last ?? 0);
+        if (Number.isFinite(lp) && lp > 0) openToday += (lp - avg) * qty;
+      }
+      const total = Number((realizedToday + openToday).toFixed(2));
+      return {
+        userId: u.id,
+        name: u.name,
+        email: u.email,
+        avatarUrl: u.avatarUrl || null,
+        totalPnlInr: total,
+      };
+    })
     .sort((a, b) => b.totalPnlInr - a.totalPnlInr)
     .map((r, idx) => ({ ...r, rank: idx + 1 }));
 };
@@ -1421,6 +1476,7 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
   const contest = currentContestOrCreate();
   const cappedContest = augmentContestForApi(contest);
   const practiceContest = currentPracticeContestForApi();
+  const dayISO = activeContestDateISO();
   const participants = cappedContest?.participants || [];
   const minParticipants = Math.max(1, Number(contest.minParticipants || minContestParticipants));
   const contestStarted = participants.length >= minParticipants;
@@ -1447,50 +1503,8 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
       totalPnlInr: 0,
       rank: null,
     }));
-    let practiceQuotes = {};
-    if (auth.accessToken) {
-      try {
-        kite.setAccessToken(auth.accessToken);
-        const symbols = [];
-        for (const u of practiceUsers) {
-          for (const p of u.positions || []) {
-            const qty = Number(p?.quantity || 0);
-            const avg = Number(p?.avgPrice || 0);
-            if (!(qty > 0 && avg > 0)) continue;
-            const k = resolveKiteSymbolFromPosition(p);
-            if (k) symbols.push(k);
-          }
-        }
-        const uniq = [...new Set(symbols)];
-        if (uniq.length) practiceQuotes = await kite.getQuote(uniq);
-      } catch {
-        // keep fallback with realized-only
-      }
-    }
-    const practiceLeaderboard = practiceUsers
-      .map((u) => {
-        const realized = Number(u.realizedPnlInr || 0);
-        let open = 0;
-        for (const p of u.positions || []) {
-          const qty = Number(p?.quantity || 0);
-          const avg = Number(p?.avgPrice || 0);
-          if (!(qty > 0 && avg > 0)) continue;
-          const k = resolveKiteSymbolFromPosition(p);
-          const q = k ? practiceQuotes?.[k] : null;
-          const lp = Number(q?.last_price ?? q?.lastPrice ?? q?.ltp ?? q?.last ?? 0);
-          if (Number.isFinite(lp) && lp > 0) open += (lp - avg) * qty;
-        }
-        const total = Number((realized + open).toFixed(2));
-        return {
-          userId: u.id,
-          name: u.name,
-          email: u.email,
-          avatarUrl: u.avatarUrl || null,
-          totalPnlInr: total,
-        };
-      })
-      .sort((a, b) => b.totalPnlInr - a.totalPnlInr)
-      .map((r, idx) => ({ ...r, rank: idx + 1 }));
+    const practiceQuotes = await getQuotesForUsersDay(practiceUsers, dayISO);
+    const practiceLeaderboard = dailyContestLeaderboardForUsers(practiceUsers, dayISO, practiceQuotes);
     const me = leaderboard.find((x) => x.userId === req.user.id) || null;
     const mePractice = practiceLeaderboard.find((x) => x.userId === req.user.id) || null;
     return res.json({
@@ -1508,61 +1522,9 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
     });
   }
 
-  let quotes = {};
-  if (auth.accessToken) {
-    try {
-      kite.setAccessToken(auth.accessToken);
-      const symbols = [];
-      for (const u of users) {
-        for (const p of u.positions || []) {
-          const qty = Number(p?.quantity || 0);
-          const avg = Number(p?.avgPrice || 0);
-          if (!(qty > 0 && avg > 0)) continue;
-          const k = resolveKiteSymbolFromPosition(p);
-          if (k) symbols.push(k);
-        }
-      }
-      const uniq = [...new Set(symbols)];
-      if (uniq.length) quotes = await kite.getQuote(uniq);
-    } catch {
-      // keep fallback with realized-only
-    }
-  }
-
-  const leaderboard = users
-    .map((u) => {
-      const realized = Number(u.realizedPnlInr || 0);
-      let open = 0;
-      for (const p of u.positions || []) {
-        const qty = Number(p?.quantity || 0);
-        const avg = Number(p?.avgPrice || 0);
-        if (!(qty > 0 && avg > 0)) continue;
-        const k = resolveKiteSymbolFromPosition(p);
-        const q = k ? quotes?.[k] : null;
-        const lp = Number(q?.last_price ?? q?.lastPrice ?? q?.ltp ?? q?.last ?? 0);
-        if (Number.isFinite(lp) && lp > 0) open += (lp - avg) * qty;
-      }
-      const total = Number((realized + open).toFixed(2));
-      return {
-        userId: u.id,
-        name: u.name,
-        email: u.email,
-        avatarUrl: u.avatarUrl || null,
-        totalPnlInr: total,
-      };
-    })
-    .sort((a, b) => b.totalPnlInr - a.totalPnlInr)
-    .map((r, idx) => ({ ...r, rank: idx + 1 }));
-  const practiceLeaderboard = getAllUsers()
-    .map((u) => ({
-      userId: u.id,
-      name: u.name,
-      email: u.email,
-      avatarUrl: u.avatarUrl || null,
-      totalPnlInr: Number(u.realizedPnlInr || 0),
-    }))
-    .sort((a, b) => b.totalPnlInr - a.totalPnlInr)
-    .map((r, idx) => ({ ...r, rank: idx + 1 }));
+  const allQuotes = await getQuotesForUsersDay(practiceUsers, dayISO);
+  const leaderboard = dailyContestLeaderboardForUsers(users, dayISO, allQuotes);
+  const practiceLeaderboard = dailyContestLeaderboardForUsers(practiceUsers, dayISO, allQuotes);
   const me = leaderboard.find((x) => x.userId === req.user.id) || null;
   const mePractice = practiceLeaderboard.find((x) => x.userId === req.user.id) || null;
   return res.json({
@@ -1707,15 +1669,19 @@ app.get("/admin/contest/current", authMiddleware, ensureAdmin, (req, res) => {
   return res.json({ status: "ok", contest: augmentContestForApi(contest) });
 });
 
-app.get("/admin/contest/winners", authMiddleware, ensureAdmin, (req, res) => {
+app.get("/admin/contest/winners", authMiddleware, ensureAdmin, async (req, res) => {
   const contest = currentContestOrCreate();
   const users = getAllUsers();
+  const dayISO = activeContestDateISO();
   const userById = new Map(users.map((u) => [u.id, u]));
   const participants = Array.isArray(contest?.participants) ? contest.participants : [];
   const prizeUsers = participants
     .map((p) => userById.get(String(p.userId)))
     .filter(Boolean);
-  const computedPrize = simpleLeaderboardForUsers(prizeUsers).slice(0, 3);
+  const prizeQuotes = await getQuotesForUsersDay(prizeUsers, dayISO);
+  const practiceQuotes = await getQuotesForUsersDay(users, dayISO);
+  const computedPrize = dailyContestLeaderboardForUsers(prizeUsers, dayISO, prizeQuotes).slice(0, 3);
+  const computedPrizeByUserId = new Map(computedPrize.map((r) => [r.userId, r]));
   const prizeTop3 =
     contest?.status === "FINALIZED" && Array.isArray(contest?.payouts) && contest.payouts.length
       ? contest.payouts
@@ -1729,14 +1695,14 @@ app.get("/admin/contest/winners", authMiddleware, ensureAdmin, (req, res) => {
               userId: String(p.userId),
               name: String(u?.name || "Unknown"),
               email: String(u?.email || ""),
-              totalPnlInr: Number(u?.realizedPnlInr || 0),
+              totalPnlInr: Number(computedPrizeByUserId.get(String(p.userId))?.totalPnlInr || 0),
               amountInr: Number(p.amountInr || 0),
               payoutStatus: String(p.status || "PENDING"),
             };
           })
       : computedPrize.map((r) => ({ ...r, amountInr: 0, payoutStatus: contest?.status === "FINALIZED" ? "PENDING" : "NOT_FINALIZED" }));
 
-  const practiceTop3 = simpleLeaderboardForUsers(users).slice(0, 3).map((r) => ({
+  const practiceTop3 = dailyContestLeaderboardForUsers(users, dayISO, practiceQuotes).slice(0, 3).map((r) => ({
     ...r,
     amountInr: 0,
     payoutStatus: "PRACTICE",
@@ -2125,12 +2091,12 @@ app.post("/admin/contest/finalize", authMiddleware, ensureAdmin, async (req, res
   }
 
   const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id));
-  const ranking = users
-    .map((u) => ({
-      userId: u.id,
-      totalPnlInr: Number(u.realizedPnlInr || 0),
-    }))
-    .sort((a, b) => b.totalPnlInr - a.totalPnlInr);
+  const dayISO = activeContestDateISO();
+  const quotes = await getQuotesForUsersDay(users, dayISO);
+  const ranking = dailyContestLeaderboardForUsers(users, dayISO, quotes).map((r) => ({
+    userId: r.userId,
+    totalPnlInr: r.totalPnlInr,
+  }));
 
   const winners = ranking.slice(0, 3);
   const payouts = winners.map((w, idx) => ({

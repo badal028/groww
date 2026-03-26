@@ -235,6 +235,7 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
           <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
             <li>You trade Stocks and F&amp;O with your virtual balance during market hours.</li>
             <li>Whoever earns the most on the live dashboard (total P&amp;L) wins the contest.</li>
+            <li>Ranking is based only on today's IST trading session P&amp;L (previous-day P&amp;L is not counted).</li>
             <li>Live leaderboard ranks users by total P&amp;L in real time.</li>
             <li>Top 3 users at contest close are winners.</li>
             <li>Prize pool: #1 ₹10,000, #2 ₹5,000, #3 ₹2,000.</li>
