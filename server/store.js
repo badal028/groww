@@ -3,6 +3,14 @@ import { dirname, resolve } from "node:path";
 
 const DB_FILE = resolve("server", "data", "users.json");
 
+const defaultSiteSettings = () => ({
+  marketBanner: {
+    enabled: false,
+    closedOn: "",
+    opensAt: "",
+  },
+});
+
 const ensureDb = () => {
   const dir = dirname(DB_FILE);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -18,9 +26,17 @@ const readDb = () => {
     const parsed = JSON.parse(raw);
     const users = Array.isArray(parsed?.users) ? parsed.users : [];
     const contests = Array.isArray(parsed?.contests) ? parsed.contests : [];
-    return { users, contests };
+    const siteSettings = {
+      ...defaultSiteSettings(),
+      ...(typeof parsed?.siteSettings === "object" && parsed.siteSettings ? parsed.siteSettings : {}),
+      marketBanner: {
+        ...defaultSiteSettings().marketBanner,
+        ...(typeof parsed?.siteSettings?.marketBanner === "object" ? parsed.siteSettings.marketBanner : {}),
+      },
+    };
+    return { users, contests, siteSettings };
   } catch {
-    return { users: [], contests: [] };
+    return { users: [], contests: [], siteSettings: defaultSiteSettings() };
   }
 };
 
@@ -79,12 +95,42 @@ export const upsertContest = (contestId, updater) => {
   return db.contests.find((c) => c.id === contestId) || null;
 };
 
+export const getSiteSettings = () => readDb().siteSettings || defaultSiteSettings();
+
+export const updateSiteSettings = (updater) => {
+  const db = readDb();
+  const prev = db.siteSettings || defaultSiteSettings();
+  const next = typeof updater === "function" ? updater(prev) : { ...prev, ...updater };
+  db.siteSettings = {
+    ...defaultSiteSettings(),
+    ...next,
+    marketBanner: {
+      ...defaultSiteSettings().marketBanner,
+      ...(next.marketBanner || {}),
+    },
+  };
+  writeDb(db);
+  return db.siteSettings;
+};
+
 export const readAllData = () => {
   return readDb();
 };
 
 export const writeAllData = (nextDb) => {
-  const users = Array.isArray(nextDb?.users) ? nextDb.users : [];
-  const contests = Array.isArray(nextDb?.contests) ? nextDb.contests : [];
-  writeDb({ users, contests });
+  const prev = readDb();
+  const users = Array.isArray(nextDb?.users) ? nextDb.users : prev.users;
+  const contests = Array.isArray(nextDb?.contests) ? nextDb.contests : prev.contests;
+  const siteSettings =
+    nextDb?.siteSettings !== undefined
+      ? {
+          ...defaultSiteSettings(),
+          ...nextDb.siteSettings,
+          marketBanner: {
+            ...defaultSiteSettings().marketBanner,
+            ...(nextDb.siteSettings?.marketBanner || {}),
+          },
+        }
+      : prev.siteSettings || defaultSiteSettings();
+  writeDb({ users, contests, siteSettings });
 };

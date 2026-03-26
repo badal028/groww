@@ -3,7 +3,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProLeague } from "@/hooks/useProLeague";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Info } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 function inr(n: number) {
@@ -15,7 +14,7 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
   const { contest, leaderboard, joined, myRank, loading, joining, join } = useProLeague();
   const [rulesOpen, setRulesOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(20);
-  const contestDateISO = contest?.contestDateISO ?? "";
+  const contestDateISO = contest?.activeContestDayISO || contest?.contestDateISO || "";
   const seats = contest?.participants?.length ?? 0;
   const contestStarted = seats >= (contest?.minParticipants ?? 500);
   const leaderboardSorted = useMemo(() => {
@@ -45,13 +44,13 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
                 type="button"
                 aria-label="How Pro-League works"
                 onClick={() => setRulesOpen(true)}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted/30 border border-border text-foreground hover:bg-muted/50"
+                className="shrink-0 rounded-full border border-border bg-muted/40 px-3 py-1 text-[11px] font-semibold text-foreground hover:bg-muted/60"
               >
-                <Info className="h-3.5 w-3.5" />
+                How it works
               </button>
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground sm:text-xs">
-              It will start on {contest.contestDateISO}. Ends at 3:30 PM IST.
+              Session date (IST): {contestDateISO}. Ends at 3:30 PM IST.
             </p>
           </div>
         </div>
@@ -183,7 +182,8 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
         <DialogContent className="max-w-md">
           <h3 className="text-base font-semibold text-foreground">How Pro-League works</h3>
           <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
-            <li>You trade with virtual balance during market hours.</li>
+            <li>You trade Stocks and F&amp;O with your virtual balance during market hours.</li>
+            <li>Whoever earns the most on the live dashboard (total P&amp;L) wins the contest.</li>
             <li>Live leaderboard ranks users by total P&amp;L in real time.</li>
             <li>Top 3 users at contest close are winners.</li>
             <li>Prize pool: #1 ₹10,000, #2 ₹5,000, #3 ₹2,000.</li>

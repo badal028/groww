@@ -7,6 +7,8 @@ export type LeagueContest = {
   id: string;
   title: string;
   contestDateISO: string;
+  /** IST calendar day for this session (from server; fixes stale contestDateISO when contest carries over). */
+  activeContestDayISO?: string;
   entryFeeInr: number;
   minParticipants: number;
   maxParticipants: number;

@@ -34,6 +34,8 @@ import { usePaperOrders } from '@/hooks/usePaperOrders';
 import OrdersPanel from '@/components/OrdersPanel';
 import ProLeaguePanel from '@/components/ProLeaguePanel';
 
+const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || 'http://127.0.0.1:3001';
+
 function avatarInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return `${parts[0][0]!}${parts[parts.length - 1]![0]!}`.toUpperCase();
@@ -74,7 +76,35 @@ const StocksPage: React.FC = () => {
     },
     [navigate],
   );
-  const kiteLoginUrl = `${import.meta.env.VITE_MARKET_DATA_API_BASE || 'http://127.0.0.1:3001'}/kite/login`;
+  const kiteLoginUrl = `${apiBase}/kite/login`;
+
+  const [marketBanner, setMarketBanner] = useState<{ enabled: boolean; message: string }>({
+    enabled: false,
+    message: '',
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadBanner = async () => {
+      try {
+        const r = await fetch(`${apiBase}/api/market-banner`);
+        const d = await r.json().catch(() => ({}));
+        if (cancelled || !r.ok) return;
+        setMarketBanner({
+          enabled: Boolean(d?.enabled && d?.message),
+          message: String(d?.message || ''),
+        });
+      } catch {
+        /* ignore */
+      }
+    };
+    void loadBanner();
+    const t = window.setInterval(loadBanner, 45000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -133,6 +163,12 @@ const StocksPage: React.FC = () => {
             </button>
           ))}
         </div>
+
+        {marketBanner.enabled && marketBanner.message ? (
+          <div className="border-b border-border bg-muted/35 px-4 py-2.5 text-center text-[11px] leading-snug text-muted-foreground sm:text-xs">
+            {marketBanner.message}
+          </div>
+        ) : null}
 
         {/* Category Tabs */}
         <div
@@ -332,8 +368,14 @@ const StocksPage: React.FC = () => {
           </div>
         </div>
 
+        {marketBanner.enabled && marketBanner.message ? (
+          <div className="border-b border-border bg-muted/35 px-4 py-2.5 text-center text-xs leading-snug text-muted-foreground">
+            {marketBanner.message}
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-12 gap-6 px-4 py-6">
-          <div className="col-span-8">
+          <div className="col-span-12">
             {activeTab === 'Positions' ? (
               <div className="mb-4">
                 <h2 className="mb-4 text-[1.25rem] font-semibold text-foreground">Positions</h2>
@@ -386,32 +428,6 @@ const StocksPage: React.FC = () => {
             )}
 
           </div>
-
-          {activeTab === 'Positions' ? null : (
-            <aside className="col-span-4 space-y-6">
-              <div>
-                <h3 className="mb-3 text-[1.25rem] font-semibold text-foreground">Your investments</h3>
-                <div className="rounded-xl border border-border bg-card p-4">
-                  <p className="text-sm text-muted-foreground">Current</p>
-                  <p className="text-[1.25rem] font-bold text-foreground">₹1,41,849</p>
-                  <div className="mt-4 space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">1D returns</span>
-                      <span className="font-medium text-loss">-₹5,404.10 (3.67%)</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Total returns</span>
-                      <span className="font-medium text-loss">-₹21,274.05 (13.04%)</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Invested</span>
-                      <span className="font-semibold text-foreground">₹1,63,123</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </aside>
-          )}
         </div>
       </div>
 

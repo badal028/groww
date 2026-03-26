@@ -25,6 +25,8 @@ import {
   upsertContest,
   readAllData,
   writeAllData,
+  getSiteSettings,
+  updateSiteSettings,
 } from "./store.js";
 import { attachMarketStream, bumpMarketStreamResync } from "./marketStream.js";
 
@@ -97,6 +99,18 @@ const activeContestDateISO = () => {
   const shiftDays = mins > 15 * 60 + 30 ? 1 : 0;
   const dt = new Date(base.getTime() + shiftDays * 86400000);
   return isoDateInIST(dt);
+};
+
+/** Client-facing contest: cap participants + show correct IST calendar day (stale contestDateISO when carry-over). */
+const augmentContestForApi = (contest) => {
+  if (!contest) return null;
+  const maxCap = Number(contest.maxParticipants || maxContestParticipants);
+  const participants = (Array.isArray(contest.participants) ? contest.participants : []).slice(0, Math.max(0, maxCap));
+  return {
+    ...contest,
+    participants,
+    activeContestDayISO: activeContestDateISO(),
+  };
 };
 
 const ensureUserFinancials = (u) => ({
@@ -659,6 +673,22 @@ app.get("/health", (_req, res) => {
     userId: auth.userId,
     updatedAt: auth.updatedAt,
   });
+});
+
+/** Public: market closed / reopen notice (admin-controlled). */
+app.get("/api/market-banner", (_req, res) => {
+  const s = getSiteSettings();
+  const b = s.marketBanner || {};
+  const enabled = Boolean(b.enabled);
+  const closedOn = String(b.closedOn || "").trim();
+  const opensAt = String(b.opensAt || "").trim();
+  const message =
+    enabled && closedOn && opensAt
+      ? `Please note that markets are closed on ${closedOn} and will open at ${opensAt}.`
+      : enabled && (closedOn || opensAt)
+        ? `Please note that markets are closed on ${closedOn || "the scheduled date"} and will open at ${opensAt || "the scheduled time"}.`
+        : "";
+  return res.json({ status: "ok", enabled, closedOn, opensAt, message });
 });
 
 app.post("/auth/signup", async (req, res) => {
@@ -1299,14 +1329,12 @@ app.patch("/auth/profile", authMiddleware, (req, res) => {
 
 app.get("/contest/current", authMiddleware, (req, res) => {
   const contest = currentContestOrCreate();
-  const maxCap = Number(contest.maxParticipants || maxContestParticipants);
-  const participantsRaw = Array.isArray(contest.participants) ? contest.participants : [];
-  const participants = participantsRaw.slice(0, Math.max(0, maxCap));
+  const capped = augmentContestForApi(contest);
   const uid = req.user.id;
-  const joined = participants.some((p) => p.userId === uid);
+  const joined = (capped?.participants || []).some((p) => p.userId === uid);
   return res.json({
     status: "ok",
-    contest: { ...contest, participants },
+    contest: capped,
     joined,
     realWalletInr: Number(req.user.realWalletInr || 0),
   });
@@ -1318,7 +1346,7 @@ app.post("/contest/join", authMiddleware, (req, res) => {
     return res.status(400).json({ status: "error", message: "Contest is not open" });
   }
   const already = Array.isArray(contest.participants) && contest.participants.some((p) => p.userId === req.user.id);
-  if (already) return res.json({ status: "ok", contest, joined: true });
+  if (already) return res.json({ status: "ok", contest: augmentContestForApi(contest), joined: true });
   if ((contest.participants?.length || 0) >= Number(contest.maxParticipants || maxContestParticipants)) {
     return res.status(400).json({ status: "error", message: "Contest is full" });
   }
@@ -1345,15 +1373,15 @@ app.post("/contest/join", authMiddleware, (req, res) => {
   });
   return res.json({
     status: "ok",
-    contest: updatedContest,
+    contest: augmentContestForApi(updatedContest),
     realWalletInr: Number(updatedUser.realWalletInr || 0),
   });
 });
 
 app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
   const contest = currentContestOrCreate();
-  const maxCap = Number(contest.maxParticipants || maxContestParticipants);
-  const participants = (Array.isArray(contest.participants) ? contest.participants : []).slice(0, Math.max(0, maxCap));
+  const cappedContest = augmentContestForApi(contest);
+  const participants = cappedContest?.participants || [];
   const minParticipants = Math.max(1, Number(contest.minParticipants || minContestParticipants));
   const contestStarted = participants.length >= minParticipants;
   const joinedAtByUserId = new Map(
@@ -1381,7 +1409,7 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
     const me = leaderboard.find((x) => x.userId === req.user.id) || null;
     return res.json({
       status: "ok",
-      contest: { ...contest, participants },
+      contest: cappedContest,
       leaderboard,
       myRank: null,
       participantCount: participants.length,
@@ -1436,7 +1464,7 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
   const me = leaderboard.find((x) => x.userId === req.user.id) || null;
   return res.json({
     status: "ok",
-    contest: { ...contest, participants },
+    contest: cappedContest,
     leaderboard,
     myRank: me?.rank || null,
     participantCount: participants.length,
@@ -1567,9 +1595,25 @@ app.post("/admin/withdrawals/:userId/:requestId/reject", authMiddleware, ensureA
 
 app.get("/admin/contest/current", authMiddleware, ensureAdmin, (req, res) => {
   const contest = currentContestOrCreate();
-  const maxCap = Number(contest.maxParticipants || maxContestParticipants);
-  const participants = (Array.isArray(contest.participants) ? contest.participants : []).slice(0, Math.max(0, maxCap));
-  return res.json({ status: "ok", contest: { ...contest, participants } });
+  return res.json({ status: "ok", contest: augmentContestForApi(contest) });
+});
+
+app.get("/admin/market-banner", authMiddleware, ensureAdmin, (req, res) => {
+  return res.json({ status: "ok", marketBanner: getSiteSettings().marketBanner });
+});
+
+app.post("/admin/market-banner", authMiddleware, ensureAdmin, (req, res) => {
+  const { enabled, closedOn, opensAt } = req.body || {};
+  const next = updateSiteSettings((prev) => ({
+    ...prev,
+    marketBanner: {
+      ...prev.marketBanner,
+      ...(typeof enabled === "boolean" ? { enabled } : {}),
+      ...(closedOn !== undefined ? { closedOn: String(closedOn || "").trim() } : {}),
+      ...(opensAt !== undefined ? { opensAt: String(opensAt || "").trim() } : {}),
+    },
+  }));
+  return res.json({ status: "ok", marketBanner: next.marketBanner });
 });
 
 app.post("/admin/contest/seed-dummy", authMiddleware, ensureAdmin, async (req, res) => {
@@ -1585,7 +1629,7 @@ app.post("/admin/contest/seed-dummy", authMiddleware, ensureAdmin, async (req, r
   const remaining = Math.max(0, Number(contest.maxParticipants || maxContestParticipants) - participants.length);
   const toAdd = Math.min(count, remaining);
 
-  if (toAdd <= 0) return res.json({ status: "ok", contest, added: 0 });
+  if (toAdd <= 0) return res.json({ status: "ok", contest: augmentContestForApi(contest), added: 0 });
 
   // Avoid name repetition within a seeded batch.
   const seedFirstNames = [
@@ -1858,7 +1902,7 @@ app.post("/admin/contest/seed-dummy", authMiddleware, ensureAdmin, async (req, r
     };
   });
 
-  return res.json({ status: "ok", contest: updatedContest, added: dummyUsers.length });
+  return res.json({ status: "ok", contest: augmentContestForApi(updatedContest), added: dummyUsers.length });
 });
 
 app.post("/admin/contest/unseed-dummy", authMiddleware, ensureAdmin, (req, res) => {
@@ -1888,7 +1932,7 @@ app.post("/admin/contest/unseed-dummy", authMiddleware, ensureAdmin, (req, res) 
   writeAllData({ users: keptUsers, contests: nextContests });
   const fresh = getAllContests().find((c) => c.id === contestId) || currentContestOrCreate();
   const removed = users.length - keptUsers.length;
-  return res.json({ status: "ok", contest: fresh, removed });
+  return res.json({ status: "ok", contest: augmentContestForApi(fresh), removed });
 });
 
 app.post("/admin/contest/config", authMiddleware, ensureAdmin, (req, res) => {

@@ -51,6 +51,7 @@ type DailySignupRow = {
 type Contest = {
   id: string;
   contestDateISO: string;
+  activeContestDayISO?: string;
   entryFeeInr: number;
   minParticipants: number;
   maxParticipants: number;
@@ -138,6 +139,11 @@ export default function AdminPage() {
   const [signupRange, setSignupRange] = useState<"today" | "14days">("today");
   const [userRange, setUserRange] = useState<"all" | "today">("all");
   const [detailsRange, setDetailsRange] = useState<"today" | "7d" | "14d" | "1m" | "1y">("today");
+  const [marketBanner, setMarketBanner] = useState<{ enabled: boolean; closedOn: string; opensAt: string }>({
+    enabled: false,
+    closedOn: "",
+    opensAt: "",
+  });
 
   const authHeaders = useMemo(() => {
     if (!token) return {};
@@ -227,12 +233,13 @@ export default function AdminPage() {
       try {
         setLoading((prev) => (hasLoadedData ? prev : true));
         setErr(null);
-        const [sRes, dRes, uRes, cRes, wRes] = await Promise.all([
+        const [sRes, dRes, uRes, cRes, wRes, bRes] = await Promise.all([
           fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/signups/daily?days=14`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/users/pnl`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/contest/current`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/withdrawals`, { headers: authHeaders }),
+          fetch(`${apiBase}/admin/market-banner`, { headers: authHeaders }),
         ]);
 
         if (!sRes.ok) throw new Error(await sRes.text().catch(() => "Summary fetch failed"));
@@ -240,12 +247,14 @@ export default function AdminPage() {
         if (!uRes.ok) throw new Error(await uRes.text().catch(() => "Users fetch failed"));
         if (!cRes.ok) throw new Error(await cRes.text().catch(() => "Contest fetch failed"));
         if (!wRes.ok) throw new Error(await wRes.text().catch(() => "Withdrawals fetch failed"));
+        if (!bRes.ok) throw new Error(await bRes.text().catch(() => "Market banner fetch failed"));
 
         const sData = await sRes.json();
         const dData = await dRes.json();
         const uData = await uRes.json();
         const cData = await cRes.json();
         const wData = await wRes.json();
+        const bData = await bRes.json();
 
         if (cancelled) return;
         setSummary(sData?.signupsTodayCount != null ? sData : null);
@@ -253,6 +262,13 @@ export default function AdminPage() {
         setUsers(Array.isArray(uData?.users) ? uData.users : []);
         setContest(cData?.contest || null);
         setWithdrawals(Array.isArray(wData?.withdrawals) ? wData.withdrawals : []);
+        if (bData?.marketBanner) {
+          setMarketBanner({
+            enabled: Boolean(bData.marketBanner.enabled),
+            closedOn: String(bData.marketBanner.closedOn || ""),
+            opensAt: String(bData.marketBanner.opensAt || ""),
+          });
+        }
         if (!selectedUserId && Array.isArray(uData?.users) && uData.users.length > 0) {
           setSelectedUserId(uData.users[0].id);
         }
@@ -381,6 +397,77 @@ export default function AdminPage() {
           </div>
           )}
 
+          {adminTab === "overview" ? (
+            <div className="mb-4 rounded-xl border border-border bg-card p-4">
+              <div className="text-sm font-semibold">Market notice banner</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                When enabled, users see this below NIFTY/BANK NIFTY/SENSEX and above Explore / Positions tabs on Stocks.
+              </p>
+              <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-border"
+                  checked={marketBanner.enabled}
+                  onChange={(e) => setMarketBanner((p) => ({ ...p, enabled: e.target.checked }))}
+                />
+                Show banner on site
+              </label>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div>
+                  <div className="text-[11px] font-medium text-muted-foreground">Markets closed on (text)</div>
+                  <input
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    placeholder="e.g. 26 Mar"
+                    value={marketBanner.closedOn}
+                    onChange={(e) => setMarketBanner((p) => ({ ...p, closedOn: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <div className="text-[11px] font-medium text-muted-foreground">Will open at (text)</div>
+                  <input
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    placeholder="e.g. 9:15 AM on 27 Mar"
+                    value={marketBanner.opensAt}
+                    onChange={(e) => setMarketBanner((p) => ({ ...p, opensAt: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Preview:{" "}
+                {marketBanner.closedOn && marketBanner.opensAt
+                  ? `Please note that markets are closed on ${marketBanner.closedOn} and will open at ${marketBanner.opensAt}.`
+                  : "Fill both fields for the full sentence."}
+              </p>
+              <button
+                type="button"
+                className="mt-3 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground"
+                onClick={async () => {
+                  const r = await fetch(`${apiBase}/admin/market-banner`, {
+                    method: "POST",
+                    headers: { ...authHeaders, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      enabled: marketBanner.enabled,
+                      closedOn: marketBanner.closedOn,
+                      opensAt: marketBanner.opensAt,
+                    }),
+                  });
+                  const d = await r.json().catch(() => ({}));
+                  if (!r.ok) return setErr(d?.message || "Save banner failed");
+                  toast.success("Market banner saved");
+                  if (d?.marketBanner) {
+                    setMarketBanner({
+                      enabled: Boolean(d.marketBanner.enabled),
+                      closedOn: String(d.marketBanner.closedOn || ""),
+                      opensAt: String(d.marketBanner.opensAt || ""),
+                    });
+                  }
+                }}
+              >
+                Save banner
+              </button>
+            </div>
+          ) : null}
+
           {adminTab === "signups" ? (
             <div className="mb-4 flex flex-wrap gap-2">
               <button
@@ -448,7 +535,8 @@ export default function AdminPage() {
                 <div>
                   <div className="text-sm font-semibold">Pro-League control</div>
                   <div className="text-xs text-muted-foreground">
-                    {contest.contestDateISO} · {contest.status} · {contest.participants?.length || 0}/{contest.maxParticipants}
+                    {contest.activeContestDayISO || contest.contestDateISO} · {contest.status} ·{" "}
+                    {contest.participants?.length || 0}/{contest.maxParticipants}
                   </div>
                 </div>
                 <button
