@@ -15,6 +15,7 @@ export type LeagueContest = {
   participants: { userId: string; joinedAt: string }[];
   status: "OPEN" | "FINALIZED";
   prizePoolInr: { first: number; second: number; third: number };
+  leagueType?: "practice" | "prize";
   payouts?: { userId: string; rank: number; amountInr: number; status: string }[];
 };
 
@@ -29,10 +30,16 @@ export type LeaderboardRow = {
 
 export function useProLeague() {
   const { token, refreshMe } = useAuth();
-  const [contest, setContest] = useState<LeagueContest | null>(null);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
-  const [joined, setJoined] = useState(false);
-  const [myRank, setMyRank] = useState<number | null>(null);
+  const [contest, setContest] = useState<LeagueContest | null>(null); // prize (backward-compatible)
+  const [practiceContest, setPracticeContest] = useState<LeagueContest | null>(null);
+  const [prizeContest, setPrizeContest] = useState<LeagueContest | null>(null);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]); // prize (backward-compatible)
+  const [practiceLeaderboard, setPracticeLeaderboard] = useState<LeaderboardRow[]>([]);
+  const [prizeLeaderboard, setPrizeLeaderboard] = useState<LeaderboardRow[]>([]);
+  const [joined, setJoined] = useState(false); // joined prize
+  const [joinedPractice, setJoinedPractice] = useState(true);
+  const [myRank, setMyRank] = useState<number | null>(null); // prize rank
+  const [myPracticeRank, setMyPracticeRank] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,8 +56,14 @@ export function useProLeague() {
     if (!token) {
       setContest(null);
       setLeaderboard([]);
+      setPracticeContest(null);
+      setPrizeContest(null);
+      setPracticeLeaderboard([]);
+      setPrizeLeaderboard([]);
       setJoined(false);
+      setJoinedPractice(true);
       setMyRank(null);
+      setMyPracticeRank(null);
       return;
     }
     if (!silent) setLoading(true);
@@ -64,10 +77,24 @@ export function useProLeague() {
       const lData = await lRes.json().catch(() => ({}));
       if (!cRes.ok) throw new Error(cData?.message || "Failed to load contest");
       if (!lRes.ok) throw new Error(lData?.message || "Failed to load leaderboard");
-      setContest(cData?.contest || null);
-      setJoined(Boolean(cData?.joined));
-      setLeaderboard(Array.isArray(lData?.leaderboard) ? lData.leaderboard : []);
-      setMyRank(Number.isFinite(lData?.myRank) ? Number(lData.myRank) : null);
+      const prize = (cData?.prizeContest || cData?.contest || lData?.prizeContest || lData?.contest || null) as LeagueContest | null;
+      const practice = (cData?.practiceContest || lData?.practiceContest || null) as LeagueContest | null;
+      const prizeBoard = Array.isArray(lData?.prizeLeaderboard)
+        ? lData.prizeLeaderboard
+        : Array.isArray(lData?.leaderboard)
+          ? lData.leaderboard
+          : [];
+      const practiceBoard = Array.isArray(lData?.practiceLeaderboard) ? lData.practiceLeaderboard : [];
+      setContest(prize);
+      setPrizeContest(prize);
+      setPracticeContest(practice);
+      setJoined(Boolean(cData?.joinedPrize ?? cData?.joined));
+      setJoinedPractice(Boolean(cData?.joinedPractice ?? true));
+      setLeaderboard(prizeBoard);
+      setPrizeLeaderboard(prizeBoard);
+      setPracticeLeaderboard(practiceBoard);
+      setMyRank(Number.isFinite(lData?.myPrizeRank) ? Number(lData.myPrizeRank) : Number.isFinite(lData?.myRank) ? Number(lData.myRank) : null);
+      setMyPracticeRank(Number.isFinite(lData?.myPracticeRank) ? Number(lData.myPracticeRank) : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load Pro-League");
     } finally {
@@ -107,6 +134,22 @@ export function useProLeague() {
     return () => window.clearInterval(timer);
   }, [token, load]);
 
-  return { contest, leaderboard, joined, myRank, loading, joining, error, refetch: load, join };
+  return {
+    contest,
+    prizeContest,
+    practiceContest,
+    leaderboard,
+    prizeLeaderboard,
+    practiceLeaderboard,
+    joined,
+    joinedPractice,
+    myRank,
+    myPracticeRank,
+    loading,
+    joining,
+    error,
+    refetch: load,
+    join,
+  };
 }
 

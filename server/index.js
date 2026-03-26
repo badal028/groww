@@ -113,6 +113,40 @@ const augmentContestForApi = (contest) => {
   };
 };
 
+const currentPracticeContestForApi = () => {
+  const today = activeContestDateISO();
+  const users = getAllUsers();
+  return {
+    id: `practice-${today}`,
+    title: "Practice League",
+    contestDateISO: today,
+    activeContestDayISO: today,
+    entryFeeInr: 0,
+    minParticipants: 1,
+    maxParticipants: 999999,
+    participants: users.map((u) => ({ userId: u.id, joinedAt: String(u.createdAt || new Date().toISOString()) })),
+    payouts: [],
+    prizePoolInr: { first: 0, second: 0, third: 0 },
+    status: "OPEN",
+    leagueType: "practice",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+};
+
+const simpleLeaderboardForUsers = (users) => {
+  return [...(Array.isArray(users) ? users : [])]
+    .map((u) => ({
+      userId: u.id,
+      name: u.name,
+      email: u.email,
+      avatarUrl: u.avatarUrl || null,
+      totalPnlInr: Number(u.realizedPnlInr || 0),
+    }))
+    .sort((a, b) => b.totalPnlInr - a.totalPnlInr)
+    .map((r, idx) => ({ ...r, rank: idx + 1 }));
+};
+
 const ensureUserFinancials = (u) => ({
   ...u,
   walletInr: Number(u.walletInr ?? defaultWalletBalance),
@@ -1330,12 +1364,17 @@ app.patch("/auth/profile", authMiddleware, (req, res) => {
 app.get("/contest/current", authMiddleware, (req, res) => {
   const contest = currentContestOrCreate();
   const capped = augmentContestForApi(contest);
+  const practiceContest = currentPracticeContestForApi();
   const uid = req.user.id;
   const joined = (capped?.participants || []).some((p) => p.userId === uid);
   return res.json({
     status: "ok",
     contest: capped,
+    prizeContest: capped,
+    practiceContest,
     joined,
+    joinedPrize: joined,
+    joinedPractice: true,
     realWalletInr: Number(req.user.realWalletInr || 0),
   });
 });
@@ -1381,6 +1420,7 @@ app.post("/contest/join", authMiddleware, (req, res) => {
 app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
   const contest = currentContestOrCreate();
   const cappedContest = augmentContestForApi(contest);
+  const practiceContest = currentPracticeContestForApi();
   const participants = cappedContest?.participants || [];
   const minParticipants = Math.max(1, Number(contest.minParticipants || minContestParticipants));
   const contestStarted = participants.length >= minParticipants;
@@ -1388,6 +1428,7 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
     participants.map((p) => [String(p.userId), String(p.joinedAt || "")]),
   );
   const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id));
+  const practiceUsers = getAllUsers();
 
   // If not started, keep leaderboard stable + non-winner (no P&L).
   if (!contestStarted) {
@@ -1406,12 +1447,63 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
       totalPnlInr: 0,
       rank: null,
     }));
+    let practiceQuotes = {};
+    if (auth.accessToken) {
+      try {
+        kite.setAccessToken(auth.accessToken);
+        const symbols = [];
+        for (const u of practiceUsers) {
+          for (const p of u.positions || []) {
+            const qty = Number(p?.quantity || 0);
+            const avg = Number(p?.avgPrice || 0);
+            if (!(qty > 0 && avg > 0)) continue;
+            const k = resolveKiteSymbolFromPosition(p);
+            if (k) symbols.push(k);
+          }
+        }
+        const uniq = [...new Set(symbols)];
+        if (uniq.length) practiceQuotes = await kite.getQuote(uniq);
+      } catch {
+        // keep fallback with realized-only
+      }
+    }
+    const practiceLeaderboard = practiceUsers
+      .map((u) => {
+        const realized = Number(u.realizedPnlInr || 0);
+        let open = 0;
+        for (const p of u.positions || []) {
+          const qty = Number(p?.quantity || 0);
+          const avg = Number(p?.avgPrice || 0);
+          if (!(qty > 0 && avg > 0)) continue;
+          const k = resolveKiteSymbolFromPosition(p);
+          const q = k ? practiceQuotes?.[k] : null;
+          const lp = Number(q?.last_price ?? q?.lastPrice ?? q?.ltp ?? q?.last ?? 0);
+          if (Number.isFinite(lp) && lp > 0) open += (lp - avg) * qty;
+        }
+        const total = Number((realized + open).toFixed(2));
+        return {
+          userId: u.id,
+          name: u.name,
+          email: u.email,
+          avatarUrl: u.avatarUrl || null,
+          totalPnlInr: total,
+        };
+      })
+      .sort((a, b) => b.totalPnlInr - a.totalPnlInr)
+      .map((r, idx) => ({ ...r, rank: idx + 1 }));
     const me = leaderboard.find((x) => x.userId === req.user.id) || null;
+    const mePractice = practiceLeaderboard.find((x) => x.userId === req.user.id) || null;
     return res.json({
       status: "ok",
       contest: cappedContest,
+      prizeContest: cappedContest,
+      practiceContest,
       leaderboard,
+      prizeLeaderboard: leaderboard,
+      practiceLeaderboard,
       myRank: null,
+      myPrizeRank: null,
+      myPracticeRank: mePractice?.rank || null,
       participantCount: participants.length,
     });
   }
@@ -1461,12 +1553,29 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
     })
     .sort((a, b) => b.totalPnlInr - a.totalPnlInr)
     .map((r, idx) => ({ ...r, rank: idx + 1 }));
+  const practiceLeaderboard = getAllUsers()
+    .map((u) => ({
+      userId: u.id,
+      name: u.name,
+      email: u.email,
+      avatarUrl: u.avatarUrl || null,
+      totalPnlInr: Number(u.realizedPnlInr || 0),
+    }))
+    .sort((a, b) => b.totalPnlInr - a.totalPnlInr)
+    .map((r, idx) => ({ ...r, rank: idx + 1 }));
   const me = leaderboard.find((x) => x.userId === req.user.id) || null;
+  const mePractice = practiceLeaderboard.find((x) => x.userId === req.user.id) || null;
   return res.json({
     status: "ok",
     contest: cappedContest,
+    prizeContest: cappedContest,
+    practiceContest,
     leaderboard,
+    prizeLeaderboard: leaderboard,
+    practiceLeaderboard,
     myRank: me?.rank || null,
+    myPrizeRank: me?.rank || null,
+    myPracticeRank: mePractice?.rank || null,
     participantCount: participants.length,
   });
 });
@@ -1596,6 +1705,50 @@ app.post("/admin/withdrawals/:userId/:requestId/reject", authMiddleware, ensureA
 app.get("/admin/contest/current", authMiddleware, ensureAdmin, (req, res) => {
   const contest = currentContestOrCreate();
   return res.json({ status: "ok", contest: augmentContestForApi(contest) });
+});
+
+app.get("/admin/contest/winners", authMiddleware, ensureAdmin, (req, res) => {
+  const contest = currentContestOrCreate();
+  const users = getAllUsers();
+  const userById = new Map(users.map((u) => [u.id, u]));
+  const participants = Array.isArray(contest?.participants) ? contest.participants : [];
+  const prizeUsers = participants
+    .map((p) => userById.get(String(p.userId)))
+    .filter(Boolean);
+  const computedPrize = simpleLeaderboardForUsers(prizeUsers).slice(0, 3);
+  const prizeTop3 =
+    contest?.status === "FINALIZED" && Array.isArray(contest?.payouts) && contest.payouts.length
+      ? contest.payouts
+          .slice()
+          .sort((a, b) => Number(a.rank || 0) - Number(b.rank || 0))
+          .slice(0, 3)
+          .map((p) => {
+            const u = userById.get(String(p.userId));
+            return {
+              rank: Number(p.rank || 0),
+              userId: String(p.userId),
+              name: String(u?.name || "Unknown"),
+              email: String(u?.email || ""),
+              totalPnlInr: Number(u?.realizedPnlInr || 0),
+              amountInr: Number(p.amountInr || 0),
+              payoutStatus: String(p.status || "PENDING"),
+            };
+          })
+      : computedPrize.map((r) => ({ ...r, amountInr: 0, payoutStatus: contest?.status === "FINALIZED" ? "PENDING" : "NOT_FINALIZED" }));
+
+  const practiceTop3 = simpleLeaderboardForUsers(users).slice(0, 3).map((r) => ({
+    ...r,
+    amountInr: 0,
+    payoutStatus: "PRACTICE",
+  }));
+
+  return res.json({
+    status: "ok",
+    contestDateISO: activeContestDateISO(),
+    prizeFinalized: contest?.status === "FINALIZED",
+    prizeTop3,
+    practiceTop3,
+  });
 });
 
 app.get("/admin/market-banner", authMiddleware, ensureAdmin, (req, res) => {

@@ -4,19 +4,41 @@ import { useProLeague } from "@/hooks/useProLeague";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Trophy } from "lucide-react";
 
 function inr(n: number) {
   return `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
 
+function trophyClass(rank: number | null) {
+  if (rank === 1) return "text-amber-500";
+  if (rank === 2) return "text-slate-400";
+  if (rank === 3) return "text-orange-600";
+  return "text-muted-foreground";
+}
+
 export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
   const { user } = useAuth();
-  const { contest, leaderboard, joined, myRank, loading, joining, join } = useProLeague();
+  const {
+    prizeContest,
+    practiceContest,
+    prizeLeaderboard,
+    practiceLeaderboard,
+    joined,
+    myRank,
+    myPracticeRank,
+    loading,
+    joining,
+    join,
+  } = useProLeague();
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [leagueTab, setLeagueTab] = useState<"practice" | "prize">("practice");
   const [visibleCount, setVisibleCount] = useState(20);
+  const contest = leagueTab === "practice" ? practiceContest : prizeContest;
+  const leaderboard = leagueTab === "practice" ? practiceLeaderboard : prizeLeaderboard;
   const contestDateISO = contest?.activeContestDayISO || contest?.contestDateISO || "";
   const seats = contest?.participants?.length ?? 0;
-  const contestStarted = seats >= (contest?.minParticipants ?? 500);
+  const contestStarted = leagueTab === "practice" ? true : seats >= (contest?.minParticipants ?? 500);
   const leaderboardSorted = useMemo(() => {
     if (!contestStarted) return leaderboard;
     return [...leaderboard].sort((a, b) => Number(b.totalPnlInr || 0) - Number(a.totalPnlInr || 0));
@@ -30,14 +52,30 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
   if (loading) return <div className="py-6 text-sm text-muted-foreground">Loading Pro-League...</div>;
   if (!contest) return <div className="py-6 text-sm text-muted-foreground">Contest is not available.</div>;
 
-  const canJoin = !joined && contest.status === "OPEN";
-  const yourRankText = contestStarted ? `${myRank ?? "-"}` : "-";
+  const canJoin = leagueTab === "prize" && !joined && contest.status === "OPEN";
+  const yourRankText = contestStarted ? `${leagueTab === "practice" ? (myPracticeRank ?? "-") : (myRank ?? "-")}` : "-";
 
   return (
     <div className={cn("space-y-4", compact ? "px-0" : "")}>
       <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-card via-card to-emerald-500/5 p-4 sm:p-5 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
+            <div className="mb-2 inline-flex rounded-lg border border-border bg-background p-1">
+              <button
+                type="button"
+                className={cn("rounded-md px-3 py-1 text-xs font-semibold", leagueTab === "practice" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+                onClick={() => setLeagueTab("practice")}
+              >
+                Practice (Free)
+              </button>
+              <button
+                type="button"
+                className={cn("rounded-md px-3 py-1 text-xs font-semibold", leagueTab === "prize" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+                onClick={() => setLeagueTab("prize")}
+              >
+                Prize League
+              </button>
+            </div>
             <div className="flex w-full items-center justify-between gap-2">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">{contest.title}</p>
               <button
@@ -70,7 +108,7 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-2 text-xs">
+        {leagueTab === "prize" ? <div className="mt-3 grid grid-cols-1 gap-2 text-xs">
           <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-emerald-600 dark:text-emerald-400">
             <div className="flex items-center justify-between">
               <span className="font-medium">#1 Winner</span>
@@ -89,24 +127,34 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
               <span className="font-semibold">{inr(contest.prizePoolInr.third)}</span>
             </div>
           </div>
-        </div>
+        </div> : (
+          <div className="mt-3 rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+            Practice League is free for all users. Trade with virtual balance and track your rank live.
+          </div>
+        )}
 
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">
-            Wallet balance: <span className="font-semibold text-foreground">{inr(user?.realWalletInr || 0)}</span>
-          </p>
-          <button
-            type="button"
-            disabled={!canJoin || joining}
-            onClick={async () => {
-              const r = await join();
-              if (!r.ok) toast.error(r.message || "Join failed");
-              else toast.success("Joined Pro-League");
-            }}
-            className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50 sm:w-auto"
-          >
-            {joined ? "Joined" : joining ? "Joining..." : `Join for ${inr(contest.entryFeeInr)}`}
-          </button>
+          {leagueTab === "prize" ? (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Wallet balance: <span className="font-semibold text-foreground">{inr(user?.realWalletInr || 0)}</span>
+              </p>
+              <button
+                type="button"
+                disabled={!canJoin || joining}
+                onClick={async () => {
+                  const r = await join();
+                  if (!r.ok) toast.error(r.message || "Join failed");
+                  else toast.success("Joined Prize League");
+                }}
+                className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50 sm:w-auto"
+              >
+                {joined ? "Joined Prize League" : joining ? "Joining..." : `Upgrade for ${inr(contest.entryFeeInr)}`}
+              </button>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">You are auto-enrolled in Practice League after signup.</p>
+          )}
         </div>
       </div>
 
@@ -150,11 +198,11 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
                     <p className="truncate text-xs text-muted-foreground">
                       {contestStarted
                         ? displayRank === 1
-                          ? "Winning ₹10,000"
+                          ? leagueTab === "prize" ? "Winning ₹10,000" : "Top performer"
                           : displayRank === 2
-                            ? "Winning ₹5,000"
+                            ? leagueTab === "prize" ? "Winning ₹5,000" : "Top performer"
                             : displayRank === 3
-                              ? "Winning ₹2,000"
+                              ? leagueTab === "prize" ? "Winning ₹2,000" : "Top performer"
                               : "Joined"
                         : "Joined"}
                     </p>
@@ -162,10 +210,13 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
                 </div>
                 <p
                   className={cn(
-                    "shrink-0 text-sm font-semibold tabular-nums",
+                    "shrink-0 text-sm font-semibold tabular-nums flex items-center gap-1",
                     contestStarted ? (row.totalPnlInr >= 0 ? "text-profit" : "text-loss") : "text-muted-foreground",
                   )}
                 >
+                  {contestStarted && displayRank != null && displayRank <= 3 ? (
+                    <Trophy className={cn("h-4 w-4", trophyClass(displayRank))} />
+                  ) : null}
                   {contestStarted ? `${row.totalPnlInr >= 0 ? "+" : ""}${inr(row.totalPnlInr)}` : "—"}
                 </p>
               </div>

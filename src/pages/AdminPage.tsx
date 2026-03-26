@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { Trophy } from "lucide-react";
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
 const adminEmail = String(import.meta.env.VITE_ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase();
@@ -83,6 +84,16 @@ type WithdrawalRow = {
   requestedAt: string;
 };
 
+type WinnerRow = {
+  rank: number;
+  userId: string;
+  name: string;
+  email: string;
+  totalPnlInr: number;
+  amountInr?: number;
+  payoutStatus?: string;
+};
+
 type PaperOrder = {
   id: string;
   symbol: string;
@@ -128,6 +139,11 @@ export default function AdminPage() {
   const [users, setUsers] = useState<AdminUserPnl[]>([]);
   const [contest, setContest] = useState<Contest | null>(null);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
+  const [dailyWinners, setDailyWinners] = useState<{ prizeTop3: WinnerRow[]; practiceTop3: WinnerRow[]; prizeFinalized: boolean }>({
+    prizeTop3: [],
+    practiceTop3: [],
+    prizeFinalized: false,
+  });
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -233,13 +249,14 @@ export default function AdminPage() {
       try {
         setLoading((prev) => (hasLoadedData ? prev : true));
         setErr(null);
-        const [sRes, dRes, uRes, cRes, wRes, bRes] = await Promise.all([
+        const [sRes, dRes, uRes, cRes, wRes, bRes, winRes] = await Promise.all([
           fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/signups/daily?days=14`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/users/pnl`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/contest/current`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/withdrawals`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/market-banner`, { headers: authHeaders }),
+          fetch(`${apiBase}/admin/contest/winners`, { headers: authHeaders }),
         ]);
 
         if (!sRes.ok) throw new Error(await sRes.text().catch(() => "Summary fetch failed"));
@@ -248,6 +265,7 @@ export default function AdminPage() {
         if (!cRes.ok) throw new Error(await cRes.text().catch(() => "Contest fetch failed"));
         if (!wRes.ok) throw new Error(await wRes.text().catch(() => "Withdrawals fetch failed"));
         if (!bRes.ok) throw new Error(await bRes.text().catch(() => "Market banner fetch failed"));
+        if (!winRes.ok) throw new Error(await winRes.text().catch(() => "Winners fetch failed"));
 
         const sData = await sRes.json();
         const dData = await dRes.json();
@@ -255,6 +273,7 @@ export default function AdminPage() {
         const cData = await cRes.json();
         const wData = await wRes.json();
         const bData = await bRes.json();
+        const winData = await winRes.json();
 
         if (cancelled) return;
         setSummary(sData?.signupsTodayCount != null ? sData : null);
@@ -269,6 +288,11 @@ export default function AdminPage() {
             opensAt: String(bData.marketBanner.opensAt || ""),
           });
         }
+        setDailyWinners({
+          prizeTop3: Array.isArray(winData?.prizeTop3) ? winData.prizeTop3 : [],
+          practiceTop3: Array.isArray(winData?.practiceTop3) ? winData.practiceTop3 : [],
+          prizeFinalized: Boolean(winData?.prizeFinalized),
+        });
         if (!selectedUserId && Array.isArray(uData?.users) && uData.users.length > 0) {
           setSelectedUserId(uData.users[0].id);
         }
@@ -704,6 +728,63 @@ export default function AdminPage() {
               )}
             </div>
           )}
+
+          {adminTab === "overview" ? (
+            <div className="mb-4 rounded-xl border border-border bg-card p-4">
+              <div className="text-sm font-semibold">Daily winners</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Trophy icons show top 3 in both Practice and Prize leagues.
+              </div>
+              <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-lg border border-border p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Practice top 3</div>
+                  <div className="mt-2 space-y-2">
+                    {dailyWinners.practiceTop3.length === 0 ? (
+                      <div className="text-xs text-muted-foreground">No practice winners yet.</div>
+                    ) : dailyWinners.practiceTop3.map((w) => (
+                      <div key={`practice-${w.userId}-${w.rank}`} className="flex items-center justify-between rounded border border-border px-2 py-1.5">
+                        <div className="min-w-0">
+                          <div className="truncate text-xs font-semibold text-foreground">{w.name}</div>
+                          <div className="truncate text-[11px] text-muted-foreground">{w.email}</div>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs font-semibold">
+                          <Trophy className={cn("h-4 w-4", w.rank === 1 ? "text-amber-500" : w.rank === 2 ? "text-slate-400" : "text-orange-600")} />
+                          <span>#{w.rank}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-border p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prize top 3</div>
+                    <span className={cn("text-[11px] font-medium", dailyWinners.prizeFinalized ? "text-profit" : "text-muted-foreground")}>
+                      {dailyWinners.prizeFinalized ? "Finalized" : "Live"}
+                    </span>
+                  </div>
+                  <div className="mt-2 space-y-2">
+                    {dailyWinners.prizeTop3.length === 0 ? (
+                      <div className="text-xs text-muted-foreground">No prize winners yet.</div>
+                    ) : dailyWinners.prizeTop3.map((w) => (
+                      <div key={`prize-${w.userId}-${w.rank}`} className="flex items-center justify-between rounded border border-border px-2 py-1.5">
+                        <div className="min-w-0">
+                          <div className="truncate text-xs font-semibold text-foreground">{w.name}</div>
+                          <div className="truncate text-[11px] text-muted-foreground">
+                            {w.email}{w.amountInr ? ` · ₹${Number(w.amountInr).toLocaleString("en-IN")}` : ""}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs font-semibold">
+                          <Trophy className={cn("h-4 w-4", w.rank === 1 ? "text-amber-500" : w.rank === 2 ? "text-slate-400" : "text-orange-600")} />
+                          <span>#{w.rank}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {adminTab === "overview" ? (
             <div className="mb-4 rounded-xl border border-border bg-card p-4">
