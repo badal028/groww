@@ -1492,7 +1492,7 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
   const contest = currentContestOrCreate();
   const cappedContest = augmentContestForApi(contest);
   const practiceContest = currentPracticeContestForApi();
-  const dayISO = activeContestDateISO();
+  const dayISO = String(cappedContest?.contestDateISO || todayISOInIST());
   const hiddenSet = hiddenLeaderboardUserSet();
   const participants = cappedContest?.participants || [];
   const minParticipants = Math.max(1, Number(contest.minParticipants || minContestParticipants));
@@ -1744,7 +1744,7 @@ app.get("/admin/contest/winners", authMiddleware, ensureAdmin, async (req, res) 
   const contest = currentContestOrCreate();
   const hiddenSet = hiddenLeaderboardUserSet();
   const users = getAllUsers().filter((u) => !hiddenSet.has(String(u.id)));
-  const dayISO = activeContestDateISO();
+  const dayISO = String(contest?.contestDateISO || todayISOInIST());
   const userById = new Map(users.map((u) => [u.id, u]));
   const participants = Array.isArray(contest?.participants) ? contest.participants : [];
   const prizeUsers = participants
@@ -2164,7 +2164,7 @@ app.post("/admin/contest/finalize", authMiddleware, ensureAdmin, async (req, res
 
   const hiddenSet = hiddenLeaderboardUserSet();
   const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id) && !hiddenSet.has(String(u.id)));
-  const dayISO = activeContestDateISO();
+  const dayISO = String(contest?.contestDateISO || todayISOInIST());
   const quotes = await getQuotesForUsersDay(users, dayISO);
   const ranking = dailyContestLeaderboardForUsers(users, dayISO, quotes).map((r) => ({
     userId: r.userId,
