@@ -9,6 +9,7 @@ const defaultSiteSettings = () => ({
     closedOn: "",
     opensAt: "",
   },
+  leaderboardHiddenUserIds: [],
 });
 
 const ensureDb = () => {
@@ -33,6 +34,9 @@ const readDb = () => {
         ...defaultSiteSettings().marketBanner,
         ...(typeof parsed?.siteSettings?.marketBanner === "object" ? parsed.siteSettings.marketBanner : {}),
       },
+      leaderboardHiddenUserIds: Array.isArray(parsed?.siteSettings?.leaderboardHiddenUserIds)
+        ? parsed.siteSettings.leaderboardHiddenUserIds.map((x) => String(x))
+        : [],
     };
     return { users, contests, siteSettings };
   } catch {
@@ -108,6 +112,9 @@ export const updateSiteSettings = (updater) => {
       ...defaultSiteSettings().marketBanner,
       ...(next.marketBanner || {}),
     },
+    leaderboardHiddenUserIds: Array.isArray(next.leaderboardHiddenUserIds)
+      ? next.leaderboardHiddenUserIds.map((x) => String(x))
+      : [],
   };
   writeDb(db);
   return db.siteSettings;
@@ -130,6 +137,9 @@ export const writeAllData = (nextDb) => {
             ...defaultSiteSettings().marketBanner,
             ...(nextDb.siteSettings?.marketBanner || {}),
           },
+          leaderboardHiddenUserIds: Array.isArray(nextDb.siteSettings?.leaderboardHiddenUserIds)
+            ? nextDb.siteSettings.leaderboardHiddenUserIds.map((x) => String(x))
+            : [],
         }
       : prev.siteSettings || defaultSiteSettings();
   writeDb({ users, contests, siteSettings });

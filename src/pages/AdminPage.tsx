@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
@@ -72,6 +72,7 @@ type AdminUserPnl = {
   realizedPnlInr: number;
   openPnlInr: number;
   totalPnlInr: number;
+  hiddenFromLeaderboard?: boolean;
 };
 
 type WithdrawalRow = {
@@ -151,6 +152,7 @@ export default function AdminPage() {
   const [orders, setOrders] = useState<PaperOrder[]>([]);
   const [positions, setPositions] = useState<PaperPosition[]>([]);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [adminTab, setAdminTab] = useState<"overview" | "signups" | "users">("overview");
   const [signupRange, setSignupRange] = useState<"today" | "14days">("today");
   const [userRange, setUserRange] = useState<"all" | "today">("all");
@@ -234,6 +236,10 @@ export default function AdminPage() {
       return Number.isFinite(t) && t >= startMs && t <= now;
     });
   }, [positions, detailsRange, istTodayISO]);
+
+  const toggleUserSelect = useCallback((userId: string) => {
+    setSelectedUserIds((prev) => (prev.includes(userId) ? prev.filter((x) => x !== userId) : [...prev, userId]));
+  }, []);
   const hasLoadedData = Boolean(summary || dailyRows.length || users.length || contest || withdrawals.length);
 
   useEffect(() => {
@@ -875,17 +881,74 @@ export default function AdminPage() {
                     Signed up today
                   </button>
                 </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={selectedUserIds.length === 0}
+                    className="rounded bg-loss px-3 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                    onClick={async () => {
+                      const ok = window.confirm(`Delete ${selectedUserIds.length} selected users? This cannot be undone.`);
+                      if (!ok) return;
+                      const res = await fetch(`${apiBase}/admin/users/delete`, {
+                        method: "POST",
+                        headers: { ...authHeaders, "Content-Type": "application/json" },
+                        body: JSON.stringify({ userIds: selectedUserIds }),
+                      });
+                      const d = await res.json().catch(() => ({}));
+                      if (!res.ok) return setErr(d?.message || "Delete users failed");
+                      const removed = new Set(selectedUserIds);
+                      setUsers((prev) => prev.filter((u) => !removed.has(u.id)));
+                      if (selectedUserId && removed.has(selectedUserId)) {
+                        const next = visibleUsersByProfit.find((u) => !removed.has(u.id))?.id || null;
+                        setSelectedUserId(next);
+                      }
+                      setSelectedUserIds([]);
+                      toast.success(`Deleted ${d?.deleted ?? 0} users`);
+                    }}
+                  >
+                    Delete selected
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedUserIds.length === 0}
+                    className="rounded border border-border px-3 py-1 text-[11px] font-semibold disabled:opacity-50"
+                    onClick={async () => {
+                      const res = await fetch(`${apiBase}/admin/leaderboard/remove-users`, {
+                        method: "POST",
+                        headers: { ...authHeaders, "Content-Type": "application/json" },
+                        body: JSON.stringify({ userIds: selectedUserIds }),
+                      });
+                      const d = await res.json().catch(() => ({}));
+                      if (!res.ok) return setErr(d?.message || "Remove from leaderboard failed");
+                      const hidden = new Set(selectedUserIds);
+                      setUsers((prev) => prev.map((u) => (hidden.has(u.id) ? { ...u, hiddenFromLeaderboard: true } : u)));
+                      setSelectedUserIds([]);
+                      toast.success("Removed selected users from Practice + Prize leaderboards");
+                    }}
+                  >
+                    Remove from leaderboard
+                  </button>
+                </div>
                 <div className="mt-2 max-h-[50vh] overflow-auto">
                   {visibleUsersByProfit.map((u) => (
-                    <button
+                    <div
                       key={u.id}
-                      type="button"
-                      onClick={() => setSelectedUserId(u.id)}
                       className={cn(
-                        "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left transition-colors",
+                        "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors",
                         selectedUserId === u.id ? "bg-muted" : "hover:bg-muted/40",
                       )}
                     >
+                      <input
+                        type="checkbox"
+                        checked={selectedUserIds.includes(u.id)}
+                        onChange={() => toggleUserSelect(u.id)}
+                        className="h-4 w-4 rounded border-border"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUserId(u.id)}
+                        className="flex min-w-0 flex-1 items-center justify-between gap-2"
+                      >
                       <div className="min-w-0">
                         <div className="truncate text-sm font-semibold">{u.name}</div>
                         <div className="truncate text-xs text-muted-foreground">{u.email}</div>
@@ -896,6 +959,9 @@ export default function AdminPage() {
                             Contest joined: {formatDateTimeIST(contestJoinedAtByUserId.get(u.id))}
                           </div>
                         <div className="truncate text-[11px] text-muted-foreground">Real ₹{Number(u.realWalletInr ?? 0).toFixed(2)}</div>
+                        {u.hiddenFromLeaderboard ? (
+                          <div className="truncate text-[11px] font-medium text-loss">Hidden from leaderboard</div>
+                        ) : null}
                       </div>
                       <div
                         className={cn(
@@ -905,7 +971,8 @@ export default function AdminPage() {
                       >
                         {formatInr(u.totalPnlInr)}
                       </div>
-                    </button>
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>

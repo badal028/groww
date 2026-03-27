@@ -116,6 +116,7 @@ const augmentContestForApi = (contest) => {
 const currentPracticeContestForApi = () => {
   const today = activeContestDateISO();
   const users = getAllUsers();
+  const hiddenSet = new Set((getSiteSettings().leaderboardHiddenUserIds || []).map((x) => String(x)));
   return {
     id: `practice-${today}`,
     title: "Practice League",
@@ -124,7 +125,9 @@ const currentPracticeContestForApi = () => {
     entryFeeInr: 0,
     minParticipants: 1,
     maxParticipants: 999999,
-    participants: users.map((u) => ({ userId: u.id, joinedAt: String(u.createdAt || new Date().toISOString()) })),
+    participants: users
+      .filter((u) => !hiddenSet.has(String(u.id)))
+      .map((u) => ({ userId: u.id, joinedAt: String(u.createdAt || new Date().toISOString()) })),
     payouts: [],
     prizePoolInr: { first: 0, second: 0, third: 0 },
     status: "OPEN",
@@ -133,6 +136,8 @@ const currentPracticeContestForApi = () => {
     updatedAt: new Date().toISOString(),
   };
 };
+
+const hiddenLeaderboardUserSet = () => new Set((getSiteSettings().leaderboardHiddenUserIds || []).map((x) => String(x)));
 
 const isSameISTDay = (dateLike, dayISO) => {
   if (!dateLike || !dayISO) return false;
@@ -177,7 +182,8 @@ const dailyContestLeaderboardForUsers = (users, dayISO, quotes) => {
       let realizedToday = 0;
       let openToday = 0;
       for (const p of u?.positions || []) {
-        if (Boolean(p?.exited) && isSameISTDay(p?.exitedAt, dayISO)) {
+        const openedToday = isSameISTDay(p?.openedAt || p?.lastTradedAt || p?.createdAt, dayISO);
+        if (Boolean(p?.exited) && isSameISTDay(p?.exitedAt, dayISO) && openedToday) {
           realizedToday += Number(p?.realizedPnlInr || 0);
           continue;
         }
@@ -198,7 +204,13 @@ const dailyContestLeaderboardForUsers = (users, dayISO, quotes) => {
         totalPnlInr: total,
       };
     })
-    .sort((a, b) => b.totalPnlInr - a.totalPnlInr)
+    .sort((a, b) => {
+      const bucket = (v) => (v > 0 ? 0 : v < 0 ? 1 : 2); // positive first, then negative, zeros last
+      const ba = bucket(a.totalPnlInr);
+      const bb = bucket(b.totalPnlInr);
+      if (ba !== bb) return ba - bb;
+      return b.totalPnlInr - a.totalPnlInr;
+    })
     .map((r, idx) => ({ ...r, rank: idx + 1 }));
 };
 
@@ -1435,6 +1447,10 @@ app.get("/contest/current", authMiddleware, (req, res) => {
 });
 
 app.post("/contest/join", authMiddleware, (req, res) => {
+  const hiddenSet = hiddenLeaderboardUserSet();
+  if (hiddenSet.has(String(req.user.id))) {
+    return res.status(400).json({ status: "error", message: "User is removed from leaderboard participation" });
+  }
   const contest = currentContestOrCreate();
   if (contest.status !== "OPEN") {
     return res.status(400).json({ status: "error", message: "Contest is not open" });
@@ -1477,14 +1493,15 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
   const cappedContest = augmentContestForApi(contest);
   const practiceContest = currentPracticeContestForApi();
   const dayISO = activeContestDateISO();
+  const hiddenSet = hiddenLeaderboardUserSet();
   const participants = cappedContest?.participants || [];
   const minParticipants = Math.max(1, Number(contest.minParticipants || minContestParticipants));
   const contestStarted = participants.length >= minParticipants;
   const joinedAtByUserId = new Map(
     participants.map((p) => [String(p.userId), String(p.joinedAt || "")]),
   );
-  const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id));
-  const practiceUsers = getAllUsers();
+  const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id) && !hiddenSet.has(String(u.id)));
+  const practiceUsers = getAllUsers().filter((u) => !hiddenSet.has(String(u.id)));
 
   // If not started, keep leaderboard stable + non-winner (no P&L).
   if (!contestStarted) {
@@ -1613,6 +1630,60 @@ app.get("/admin/users", authMiddleware, ensureAdmin, (req, res) => {
   });
 });
 
+app.post("/admin/users/delete", authMiddleware, ensureAdmin, (req, res) => {
+  const ids = Array.isArray(req.body?.userIds) ? req.body.userIds.map((x) => String(x)) : [];
+  if (!ids.length) return res.status(400).json({ status: "error", message: "userIds are required" });
+  const idSet = new Set(ids);
+  const db = readAllData();
+  const users = Array.isArray(db.users) ? db.users : [];
+  const contests = Array.isArray(db.contests) ? db.contests : [];
+  const nextUsers = users.filter((u) => !idSet.has(String(u.id)));
+  const nextContests = contests.map((c) => ({
+    ...c,
+    participants: (Array.isArray(c?.participants) ? c.participants : []).filter((p) => !idSet.has(String(p.userId))),
+    payouts: (Array.isArray(c?.payouts) ? c.payouts : []).filter((p) => !idSet.has(String(p.userId))),
+    updatedAt: new Date().toISOString(),
+  }));
+  const prevHidden = Array.isArray(db?.siteSettings?.leaderboardHiddenUserIds)
+    ? db.siteSettings.leaderboardHiddenUserIds.map((x) => String(x))
+    : [];
+  const nextHidden = prevHidden.filter((x) => !idSet.has(String(x)));
+  writeAllData({
+    users: nextUsers,
+    contests: nextContests,
+    siteSettings: {
+      ...(db.siteSettings || {}),
+      leaderboardHiddenUserIds: nextHidden,
+    },
+  });
+  return res.json({ status: "ok", deleted: users.length - nextUsers.length });
+});
+
+app.post("/admin/leaderboard/remove-users", authMiddleware, ensureAdmin, (req, res) => {
+  const ids = Array.isArray(req.body?.userIds) ? req.body.userIds.map((x) => String(x)) : [];
+  if (!ids.length) return res.status(400).json({ status: "error", message: "userIds are required" });
+  const idSet = new Set(ids);
+  const settings = updateSiteSettings((prev) => {
+    const cur = Array.isArray(prev?.leaderboardHiddenUserIds) ? prev.leaderboardHiddenUserIds.map((x) => String(x)) : [];
+    return {
+      ...prev,
+      leaderboardHiddenUserIds: [...new Set([...cur, ...ids])],
+    };
+  });
+  const contest = currentContestOrCreate();
+  const updatedContest = upsertContest(contest.id, (prev) => ({
+    ...prev,
+    participants: (Array.isArray(prev?.participants) ? prev.participants : []).filter((p) => !idSet.has(String(p.userId))),
+    payouts: (Array.isArray(prev?.payouts) ? prev.payouts : []).filter((p) => !idSet.has(String(p.userId))),
+    updatedAt: new Date().toISOString(),
+  }));
+  return res.json({
+    status: "ok",
+    hiddenUserIds: settings.leaderboardHiddenUserIds || [],
+    contest: augmentContestForApi(updatedContest),
+  });
+});
+
 app.get("/admin/withdrawals", authMiddleware, ensureAdmin, (req, res) => {
   const users = getAllUsers();
   const rows = [];
@@ -1671,7 +1742,8 @@ app.get("/admin/contest/current", authMiddleware, ensureAdmin, (req, res) => {
 
 app.get("/admin/contest/winners", authMiddleware, ensureAdmin, async (req, res) => {
   const contest = currentContestOrCreate();
-  const users = getAllUsers();
+  const hiddenSet = hiddenLeaderboardUserSet();
+  const users = getAllUsers().filter((u) => !hiddenSet.has(String(u.id)));
   const dayISO = activeContestDateISO();
   const userById = new Map(users.map((u) => [u.id, u]));
   const participants = Array.isArray(contest?.participants) ? contest.participants : [];
@@ -2090,7 +2162,8 @@ app.post("/admin/contest/finalize", authMiddleware, ensureAdmin, async (req, res
     });
   }
 
-  const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id));
+  const hiddenSet = hiddenLeaderboardUserSet();
+  const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id) && !hiddenSet.has(String(u.id)));
   const dayISO = activeContestDateISO();
   const quotes = await getQuotesForUsersDay(users, dayISO);
   const ranking = dailyContestLeaderboardForUsers(users, dayISO, quotes).map((r) => ({
@@ -2176,6 +2249,7 @@ app.get("/admin/users/:id/positions", authMiddleware, ensureAdmin, (req, res) =>
 
 app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
   const users = getAllUsers().filter((u) => !isSeededUser(u));
+  const hiddenSet = hiddenLeaderboardUserSet();
 
   const realizedByUser = new Map();
   for (const u of users) {
@@ -2201,6 +2275,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
         realizedPnlInr: Number(u.realizedPnlInr ?? 0),
         openPnlInr: 0,
         totalPnlInr: Number(u.realizedPnlInr ?? 0),
+        hiddenFromLeaderboard: hiddenSet.has(String(u.id)),
       })),
     });
   }
@@ -2238,6 +2313,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
           realizedPnlInr: Number(u.realizedPnlInr ?? 0),
           openPnlInr: 0,
           totalPnlInr: Number(u.realizedPnlInr ?? 0),
+          hiddenFromLeaderboard: hiddenSet.has(String(u.id)),
         })),
       });
     }
@@ -2270,6 +2346,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
           realizedPnlInr: realized,
           openPnlInr: open,
           totalPnlInr: Number((realized + open).toFixed(2)),
+          hiddenFromLeaderboard: hiddenSet.has(String(u.id)),
         };
       }),
     });

@@ -1,0 +1,15 @@
+{
+  "name": "GrowwTrader",
+  "short_name": "GrowwTrader",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0F14",
+  "theme_color": "#00D09C",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
