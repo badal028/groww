@@ -41,7 +41,15 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
   const contestStarted = leagueTab === "practice" ? true : seats >= (contest?.minParticipants ?? 500);
   const leaderboardSorted = useMemo(() => {
     if (!contestStarted) return leaderboard;
-    return [...leaderboard].sort((a, b) => Number(b.totalPnlInr || 0) - Number(a.totalPnlInr || 0));
+    return [...leaderboard].sort((a, b) => {
+      const av = Number(a.totalPnlInr || 0);
+      const bv = Number(b.totalPnlInr || 0);
+      const bucket = (v: number) => (v > 0 ? 0 : v < 0 ? 1 : 2); // positive first, then negative, zeros last
+      const ba = bucket(av);
+      const bb = bucket(bv);
+      if (ba !== bb) return ba - bb;
+      return bv - av;
+    });
   }, [leaderboard, contestStarted]);
   const visibleRows = useMemo(() => leaderboardSorted.slice(0, visibleCount), [leaderboardSorted, visibleCount]);
 
