@@ -155,8 +155,8 @@ const getContestOfferState = (contest) => {
   const endsAtISO = String(offer.endsAtISO || "").trim();
   const endsAtMs = endsAtISO ? Date.parse(endsAtISO) : Number.NaN;
   const timeOk = !endsAtISO || (Number.isFinite(endsAtMs) && Date.now() <= endsAtMs);
-  const seatOk = seatsRemaining > 0;
-  const active = enabled && timeOk && seatOk;
+  // Promo price applies to all joiners while enabled and before endsAt (seatLimit is informational only).
+  const active = enabled && timeOk;
   const effectiveEntryFeeInr = active ? promoFeeInr : Number(contest?.entryFeeInr || defaultContestFeeInr || originalFeeInr);
   return {
     enabled,

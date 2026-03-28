@@ -10,6 +10,25 @@ function inr(n: number) {
   return `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
 
+/** Human-readable time left (not raw HH:MM:SS where HH can exceed 24). */
+function formatOfferTimeRemaining(msRemaining: number): string {
+  const sec = Math.max(0, Math.floor(msRemaining / 1000));
+  const days = Math.floor(sec / 86400);
+  const hours = Math.floor((sec % 86400) / 3600);
+  const minutes = Math.floor((sec % 3600) / 60);
+  const seconds = sec % 60;
+  if (days >= 1) {
+    return `${days}d ${hours}h ${minutes}m`;
+  }
+  if (hours >= 1) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+  if (minutes >= 1) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
+}
+
 function trophyClass(rank: number | null) {
   if (rank === 1) return "text-amber-500";
   if (rank === 2) return "text-slate-400";
@@ -71,16 +90,9 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
   const offer = contest?.pricing?.offer;
   const effectiveFee = Number(contest?.pricing?.effectiveEntryFeeInr ?? contest?.entryFeeInr ?? 0);
   const offerEndsMs = offer?.endsAtISO ? Date.parse(offer.endsAtISO) : Number.NaN;
-  const offerCountdown =
-    Number.isFinite(offerEndsMs) && offerEndsMs > offerNowMs
-      ? (() => {
-          const s = Math.floor((offerEndsMs - offerNowMs) / 1000);
-          const hh = String(Math.floor(s / 3600)).padStart(2, "0");
-          const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
-          const ss = String(s % 60).padStart(2, "0");
-          return `${hh}:${mm}:${ss}`;
-        })()
-      : null;
+  const offerTimeLeftMs =
+    offer?.active && Number.isFinite(offerEndsMs) && offerEndsMs > offerNowMs ? offerEndsMs - offerNowMs : null;
+  const offerCountdown = offerTimeLeftMs != null ? formatOfferTimeRemaining(offerTimeLeftMs) : null;
 
   return (
     <div className={cn("space-y-4", compact ? "px-0" : "")}>
@@ -140,12 +152,19 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
           <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-semibold">{offer.label || "Limited time offer"}</span>
-              {offerCountdown ? <span className="font-semibold">Ends in {offerCountdown}</span> : null}
+              {offerCountdown ? (
+                <span className="font-semibold tabular-nums">Ends in {offerCountdown}</span>
+              ) : null}
             </div>
             <div className="mt-1 text-[11px]">
-              {offer.active
-                ? `Only ${offer.seatLimit} seats offer valid. Left: ${offer.seatsRemaining}.`
-                : "Offer inactive. Real entry fee is applied."}
+              {offer.active ? (
+                "Discounted entry applies to everyone until the offer end time."
+              ) : (
+                <>
+                  <span className="font-medium">Promo not applied.</span> You pay the standard entry fee of{" "}
+                  {inr(effectiveFee)}. The offer may be turned off in admin, or the offer end time has passed.
+                </>
+              )}
             </div>
           </div>
         ) : null}
@@ -183,10 +202,11 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
                   <span className="ml-2">
                     {offer.active ? (
                       <span className="font-medium text-amber-600 dark:text-amber-300">
-                        ✓ <span className="line-through opacity-70">{inr(offer.originalFeeInr)}</span> {inr(effectiveFee)}
+                        Entry: <span className="line-through opacity-70">{inr(offer.originalFeeInr)}</span>{" "}
+                        {inr(effectiveFee)}
                       </span>
                     ) : (
-                      <span className="font-medium text-muted-foreground">Real fee: {inr(offer.originalFeeInr)}</span>
+                      <span className="font-medium text-muted-foreground">Entry fee: {inr(effectiveFee)}</span>
                     )}
                   </span>
                 ) : null}
@@ -201,7 +221,7 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
                 }}
                 className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50 sm:w-auto"
               >
-                {joined ? "Joined Prize League" : joining ? "Joining..." : `Upgrade for ${inr(effectiveFee)}`}
+                {joined ? "Joined Prize League" : joining ? "Joining..." : `Join for ${inr(effectiveFee)}`}
               </button>
             </>
           ) : (

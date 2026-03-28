@@ -571,7 +571,7 @@ export default function AdminPage() {
             <div className="mb-4 rounded-xl border border-border bg-card p-4">
               <div className="text-sm font-semibold">Prize League offer</div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Admin can show strike-through real fee (e.g. 79) and discounted fee (e.g. 19/29) with countdown.
+                While enabled and before “Offer ends”, every user gets the discounted fee (not limited to first N joiners).
               </p>
               <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
                 <input
@@ -611,13 +611,14 @@ export default function AdminPage() {
                   />
                 </div>
                 <div>
-                  <div className="text-[11px] font-medium text-muted-foreground">Offer seats</div>
+                  <div className="text-[11px] font-medium text-muted-foreground">Offer seats (legacy)</div>
                   <input
                     type="number"
                     className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                     value={contestOffer.seatLimit}
                     onChange={(e) => setContestOffer((p) => ({ ...p, seatLimit: Number(e.target.value || 250) }))}
                   />
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">Not used for pricing; promo applies to all until end time.</p>
                 </div>
                 <div className="sm:col-span-2">
                   <div className="text-[11px] font-medium text-muted-foreground">Offer ends at (local time)</div>
