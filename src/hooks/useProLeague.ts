@@ -16,6 +16,20 @@ export type LeagueContest = {
   status: "OPEN" | "FINALIZED";
   prizePoolInr: { first: number; second: number; third: number };
   leagueType?: "practice" | "prize";
+  pricing?: {
+    effectiveEntryFeeInr: number;
+    offer?: {
+      enabled: boolean;
+      active: boolean;
+      label: string;
+      originalFeeInr: number;
+      promoFeeInr: number;
+      seatLimit: number;
+      seatsUsed: number;
+      seatsRemaining: number;
+      endsAtISO: string;
+    };
+  };
   payouts?: { userId: string; rank: number; amountInr: number; status: string }[];
 };
 

@@ -34,6 +34,7 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [leagueTab, setLeagueTab] = useState<"practice" | "prize">("practice");
   const [visibleCount, setVisibleCount] = useState(20);
+  const [offerNowMs, setOfferNowMs] = useState<number>(Date.now());
   const contest = leagueTab === "practice" ? practiceContest : prizeContest;
   const leaderboard = leagueTab === "practice" ? practiceLeaderboard : prizeLeaderboard;
   const contestDateISO = contest?.activeContestDayISO || contest?.contestDateISO || "";
@@ -57,11 +58,29 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
     setVisibleCount(20);
   }, [leaderboard.length, contestDateISO]);
 
+  useEffect(() => {
+    const t = window.setInterval(() => setOfferNowMs(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
   if (loading) return <div className="py-6 text-sm text-muted-foreground">Loading Pro-League...</div>;
   if (!contest) return <div className="py-6 text-sm text-muted-foreground">Contest is not available.</div>;
 
   const canJoin = leagueTab === "prize" && !joined && contest.status === "OPEN";
   const yourRankText = contestStarted ? `${leagueTab === "practice" ? (myPracticeRank ?? "-") : (myRank ?? "-")}` : "-";
+  const offer = contest?.pricing?.offer;
+  const effectiveFee = Number(contest?.pricing?.effectiveEntryFeeInr ?? contest?.entryFeeInr ?? 0);
+  const offerEndsMs = offer?.endsAtISO ? Date.parse(offer.endsAtISO) : Number.NaN;
+  const offerCountdown =
+    Number.isFinite(offerEndsMs) && offerEndsMs > offerNowMs
+      ? (() => {
+          const s = Math.floor((offerEndsMs - offerNowMs) / 1000);
+          const hh = String(Math.floor(s / 3600)).padStart(2, "0");
+          const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+          const ss = String(s % 60).padStart(2, "0");
+          return `${hh}:${mm}:${ss}`;
+        })()
+      : null;
 
   return (
     <div className={cn("space-y-4", compact ? "px-0" : "")}>
@@ -116,26 +135,40 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
           </div>
         </div>
 
-        {leagueTab === "prize" ? <div className="mt-3 grid grid-cols-1 gap-2 text-xs">
+        {leagueTab === "prize" ? <>
+        {offer?.enabled ? (
+          <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold">{offer.label || "Limited time offer"}</span>
+              {offerCountdown ? <span className="font-semibold">Ends in {offerCountdown}</span> : null}
+            </div>
+            <div className="mt-1 text-[11px]">
+              {offer.active
+                ? `Only ${offer.seatLimit} seats offer valid. Left: ${offer.seatsRemaining}.`
+                : "Offer inactive. Real entry fee is applied."}
+            </div>
+          </div>
+        ) : null}
+        <div className="mt-3 grid grid-cols-1 gap-2 text-xs">
           <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-emerald-600 dark:text-emerald-400">
             <div className="flex items-center justify-between">
               <span className="font-medium">#1 Winner</span>
-              <span className="font-semibold">{inr(contest.prizePoolInr.first)}</span>
+              <span className="font-semibold">{inr(contest.prizePoolInr.first)} CASH</span>
             </div>
           </div>
           <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-emerald-600 dark:text-emerald-400">
             <div className="flex items-center justify-between">
               <span className="font-medium">#2 Winner</span>
-              <span className="font-semibold">{inr(contest.prizePoolInr.second)}</span>
+              <span className="font-semibold">{inr(contest.prizePoolInr.second)} CASH</span>
             </div>
           </div>
           <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-emerald-600 dark:text-emerald-400">
             <div className="flex items-center justify-between">
               <span className="font-medium">#3 Winner</span>
-              <span className="font-semibold">{inr(contest.prizePoolInr.third)}</span>
+              <span className="font-semibold">{inr(contest.prizePoolInr.third)} CASH</span>
             </div>
           </div>
-        </div> : (
+        </div></> : (
           <div className="mt-3 rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
             Practice League is free for all users. Trade with virtual balance and track your rank live.
           </div>
@@ -146,6 +179,17 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
             <>
               <p className="text-xs text-muted-foreground">
                 Wallet balance: <span className="font-semibold text-foreground">{inr(user?.realWalletInr || 0)}</span>
+                {offer?.enabled ? (
+                  <span className="ml-2">
+                    {offer.active ? (
+                      <span className="font-medium text-amber-600 dark:text-amber-300">
+                        ✓ <span className="line-through opacity-70">{inr(offer.originalFeeInr)}</span> {inr(effectiveFee)}
+                      </span>
+                    ) : (
+                      <span className="font-medium text-muted-foreground">Real fee: {inr(offer.originalFeeInr)}</span>
+                    )}
+                  </span>
+                ) : null}
               </p>
               <button
                 type="button"
@@ -157,7 +201,7 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
                 }}
                 className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50 sm:w-auto"
               >
-                {joined ? "Joined Prize League" : joining ? "Joining..." : `Upgrade for ${inr(contest.entryFeeInr)}`}
+                {joined ? "Joined Prize League" : joining ? "Joining..." : `Upgrade for ${inr(effectiveFee)}`}
               </button>
             </>
           ) : (
@@ -206,11 +250,11 @@ export default function ProLeaguePanel({ compact }: { compact?: boolean }) {
                     <p className="truncate text-xs text-muted-foreground">
                       {contestStarted
                         ? displayRank === 1
-                          ? leagueTab === "prize" ? "Winning ₹10,000" : "Top performer"
+                          ? leagueTab === "prize" ? "Winning ₹10,000 CASH" : "Top performer"
                           : displayRank === 2
-                            ? leagueTab === "prize" ? "Winning ₹5,000" : "Top performer"
+                            ? leagueTab === "prize" ? "Winning ₹5,000 CASH" : "Top performer"
                             : displayRank === 3
-                              ? leagueTab === "prize" ? "Winning ₹2,000" : "Top performer"
+                              ? leagueTab === "prize" ? "Winning ₹2,000 CASH" : "Top performer"
                               : "Joined"
                         : "Joined"}
                     </p>

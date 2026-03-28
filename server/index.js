@@ -106,10 +106,15 @@ const augmentContestForApi = (contest) => {
   if (!contest) return null;
   const maxCap = Number(contest.maxParticipants || maxContestParticipants);
   const participants = (Array.isArray(contest.participants) ? contest.participants : []).slice(0, Math.max(0, maxCap));
+  const offer = getContestOfferState({ ...contest, participants });
   return {
     ...contest,
     participants,
     activeContestDayISO: activeContestDateISO(),
+    pricing: {
+      effectiveEntryFeeInr: offer.effectiveEntryFeeInr,
+      offer,
+    },
   };
 };
 
@@ -138,6 +143,34 @@ const currentPracticeContestForApi = () => {
 };
 
 const hiddenLeaderboardUserSet = () => new Set((getSiteSettings().leaderboardHiddenUserIds || []).map((x) => String(x)));
+
+const getContestOfferState = (contest) => {
+  const offer = getSiteSettings().contestOffer || {};
+  const enabled = Boolean(offer.enabled);
+  const originalFeeInr = Number(offer.originalFeeInr || contest?.entryFeeInr || defaultContestFeeInr || 79);
+  const promoFeeInr = Number(offer.promoFeeInr || 19);
+  const seatLimit = Math.max(1, Number(offer.seatLimit || 250));
+  const seatsUsed = Math.max(0, Number(contest?.participants?.length || 0));
+  const seatsRemaining = Math.max(0, seatLimit - seatsUsed);
+  const endsAtISO = String(offer.endsAtISO || "").trim();
+  const endsAtMs = endsAtISO ? Date.parse(endsAtISO) : Number.NaN;
+  const timeOk = !endsAtISO || (Number.isFinite(endsAtMs) && Date.now() <= endsAtMs);
+  const seatOk = seatsRemaining > 0;
+  const active = enabled && timeOk && seatOk;
+  const effectiveEntryFeeInr = active ? promoFeeInr : Number(contest?.entryFeeInr || defaultContestFeeInr || originalFeeInr);
+  return {
+    enabled,
+    active,
+    label: String(offer.label || "Weekend offer"),
+    originalFeeInr,
+    promoFeeInr,
+    seatLimit,
+    seatsUsed,
+    seatsRemaining,
+    endsAtISO,
+    effectiveEntryFeeInr,
+  };
+};
 
 const isSameISTDay = (dateLike, dayISO) => {
   if (!dateLike || !dayISO) return false;
@@ -1460,7 +1493,7 @@ app.post("/contest/join", authMiddleware, (req, res) => {
   if ((contest.participants?.length || 0) >= Number(contest.maxParticipants || maxContestParticipants)) {
     return res.status(400).json({ status: "error", message: "Contest is full" });
   }
-  const fee = Number(contest.entryFeeInr || defaultContestFeeInr);
+  const fee = Number(getContestOfferState(contest).effectiveEntryFeeInr || contest.entryFeeInr || defaultContestFeeInr);
   const currentReal = Number(req.user.realWalletInr || 0);
   if (currentReal < fee) {
     return res.status(400).json({ status: "error", message: "Insufficient real balance" });
@@ -1791,6 +1824,27 @@ app.get("/admin/contest/winners", authMiddleware, ensureAdmin, async (req, res) 
 
 app.get("/admin/market-banner", authMiddleware, ensureAdmin, (req, res) => {
   return res.json({ status: "ok", marketBanner: getSiteSettings().marketBanner });
+});
+
+app.get("/admin/contest/offer", authMiddleware, ensureAdmin, (req, res) => {
+  return res.json({ status: "ok", contestOffer: getSiteSettings().contestOffer || {} });
+});
+
+app.post("/admin/contest/offer", authMiddleware, ensureAdmin, (req, res) => {
+  const { enabled, label, originalFeeInr, promoFeeInr, seatLimit, endsAtISO } = req.body || {};
+  const next = updateSiteSettings((prev) => ({
+    ...prev,
+    contestOffer: {
+      ...prev.contestOffer,
+      ...(typeof enabled === "boolean" ? { enabled } : {}),
+      ...(label !== undefined ? { label: String(label || "").trim() } : {}),
+      ...(originalFeeInr !== undefined ? { originalFeeInr: Math.max(1, Number(originalFeeInr || 79)) } : {}),
+      ...(promoFeeInr !== undefined ? { promoFeeInr: Math.max(1, Number(promoFeeInr || 19)) } : {}),
+      ...(seatLimit !== undefined ? { seatLimit: Math.max(1, Number(seatLimit || 250)) } : {}),
+      ...(endsAtISO !== undefined ? { endsAtISO: String(endsAtISO || "").trim() } : {}),
+    },
+  }));
+  return res.json({ status: "ok", contestOffer: next.contestOffer || {} });
 });
 
 app.post("/admin/market-banner", authMiddleware, ensureAdmin, (req, res) => {

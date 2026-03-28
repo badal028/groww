@@ -10,6 +10,14 @@ const defaultSiteSettings = () => ({
     opensAt: "",
   },
   leaderboardHiddenUserIds: [],
+  contestOffer: {
+    enabled: false,
+    label: "Weekend offer",
+    originalFeeInr: 79,
+    promoFeeInr: 19,
+    seatLimit: 250,
+    endsAtISO: "",
+  },
 });
 
 const ensureDb = () => {
@@ -37,6 +45,10 @@ const readDb = () => {
       leaderboardHiddenUserIds: Array.isArray(parsed?.siteSettings?.leaderboardHiddenUserIds)
         ? parsed.siteSettings.leaderboardHiddenUserIds.map((x) => String(x))
         : [],
+      contestOffer: {
+        ...defaultSiteSettings().contestOffer,
+        ...(typeof parsed?.siteSettings?.contestOffer === "object" ? parsed.siteSettings.contestOffer : {}),
+      },
     };
     return { users, contests, siteSettings };
   } catch {
@@ -115,6 +127,10 @@ export const updateSiteSettings = (updater) => {
     leaderboardHiddenUserIds: Array.isArray(next.leaderboardHiddenUserIds)
       ? next.leaderboardHiddenUserIds.map((x) => String(x))
       : [],
+    contestOffer: {
+      ...defaultSiteSettings().contestOffer,
+      ...(next.contestOffer || {}),
+    },
   };
   writeDb(db);
   return db.siteSettings;
@@ -140,6 +156,10 @@ export const writeAllData = (nextDb) => {
           leaderboardHiddenUserIds: Array.isArray(nextDb.siteSettings?.leaderboardHiddenUserIds)
             ? nextDb.siteSettings.leaderboardHiddenUserIds.map((x) => String(x))
             : [],
+          contestOffer: {
+            ...defaultSiteSettings().contestOffer,
+            ...(nextDb.siteSettings?.contestOffer || {}),
+          },
         }
       : prev.siteSettings || defaultSiteSettings();
   writeDb({ users, contests, siteSettings });

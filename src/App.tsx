@@ -18,8 +18,13 @@ import RefundsCancellationsPage from "./pages/RefundsCancellationsPage";
 import OtherDetailsPage from "./pages/OtherDetailsPage";
 import DesktopSidebar from "./components/DesktopSidebar";
 import NotFound from "./pages/NotFound.tsx";
+import PaperTradingLeaguePage from "./pages/seo/PaperTradingLeaguePage";
+import StockTradingContestPage from "./pages/seo/StockTradingContestPage";
+import FantasyStyleStockLeaguePage from "./pages/seo/FantasyStyleStockLeaguePage";
+import AboutGrowwTraderPage from "./pages/seo/AboutGrowwTraderPage";
 
 const queryClient = new QueryClient();
+
 
 const AppLayout = () => {
   const location = useLocation();
@@ -71,7 +76,13 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <AppLayout />
+            <Routes>
+              <Route path="/learn/paper-trading-league" element={<PaperTradingLeaguePage />} />
+              <Route path="/learn/stock-trading-contest-india" element={<StockTradingContestPage />} />
+              <Route path="/learn/fantasy-style-stock-league" element={<FantasyStyleStockLeaguePage />} />
+              <Route path="/about/growwtrader" element={<AboutGrowwTraderPage />} />
+              <Route path="/*" element={<AppLayout />} />
+            </Routes>
           </BrowserRouter>
         </TooltipProvider>
       </AuthProvider>

@@ -162,6 +162,21 @@ export default function AdminPage() {
     closedOn: "",
     opensAt: "",
   });
+  const [contestOffer, setContestOffer] = useState<{
+    enabled: boolean;
+    label: string;
+    originalFeeInr: number;
+    promoFeeInr: number;
+    seatLimit: number;
+    endsAtISO: string;
+  }>({
+    enabled: false,
+    label: "Weekend offer",
+    originalFeeInr: 79,
+    promoFeeInr: 19,
+    seatLimit: 250,
+    endsAtISO: "",
+  });
 
   const authHeaders = useMemo(() => {
     if (!token) return {};
@@ -255,13 +270,14 @@ export default function AdminPage() {
       try {
         setLoading((prev) => (hasLoadedData ? prev : true));
         setErr(null);
-        const [sRes, dRes, uRes, cRes, wRes, bRes, winRes] = await Promise.all([
+        const [sRes, dRes, uRes, cRes, wRes, bRes, offerRes, winRes] = await Promise.all([
           fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/signups/daily?days=14`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/users/pnl`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/contest/current`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/withdrawals`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/market-banner`, { headers: authHeaders }),
+          fetch(`${apiBase}/admin/contest/offer`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/contest/winners`, { headers: authHeaders }),
         ]);
 
@@ -271,6 +287,7 @@ export default function AdminPage() {
         if (!cRes.ok) throw new Error(await cRes.text().catch(() => "Contest fetch failed"));
         if (!wRes.ok) throw new Error(await wRes.text().catch(() => "Withdrawals fetch failed"));
         if (!bRes.ok) throw new Error(await bRes.text().catch(() => "Market banner fetch failed"));
+        if (!offerRes.ok) throw new Error(await offerRes.text().catch(() => "Contest offer fetch failed"));
         if (!winRes.ok) throw new Error(await winRes.text().catch(() => "Winners fetch failed"));
 
         const sData = await sRes.json();
@@ -279,6 +296,7 @@ export default function AdminPage() {
         const cData = await cRes.json();
         const wData = await wRes.json();
         const bData = await bRes.json();
+        const offerData = await offerRes.json();
         const winData = await winRes.json();
 
         if (cancelled) return;
@@ -292,6 +310,16 @@ export default function AdminPage() {
             enabled: Boolean(bData.marketBanner.enabled),
             closedOn: String(bData.marketBanner.closedOn || ""),
             opensAt: String(bData.marketBanner.opensAt || ""),
+          });
+        }
+        if (offerData?.contestOffer) {
+          setContestOffer({
+            enabled: Boolean(offerData.contestOffer.enabled),
+            label: String(offerData.contestOffer.label || "Weekend offer"),
+            originalFeeInr: Number(offerData.contestOffer.originalFeeInr || 79),
+            promoFeeInr: Number(offerData.contestOffer.promoFeeInr || 19),
+            seatLimit: Number(offerData.contestOffer.seatLimit || 250),
+            endsAtISO: String(offerData.contestOffer.endsAtISO || ""),
           });
         }
         setDailyWinners({
@@ -494,6 +522,87 @@ export default function AdminPage() {
                 }}
               >
                 Save banner
+              </button>
+            </div>
+          ) : null}
+
+          {adminTab === "overview" ? (
+            <div className="mb-4 rounded-xl border border-border bg-card p-4">
+              <div className="text-sm font-semibold">Prize League offer</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Admin can show strike-through real fee (e.g. 79) and discounted fee (e.g. 19/29) with countdown.
+              </p>
+              <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-border"
+                  checked={contestOffer.enabled}
+                  onChange={(e) => setContestOffer((p) => ({ ...p, enabled: e.target.checked }))}
+                />
+                Enable offer checkmark + discounted fee
+              </label>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <div className="text-[11px] font-medium text-muted-foreground">Offer label</div>
+                  <input
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    value={contestOffer.label}
+                    onChange={(e) => setContestOffer((p) => ({ ...p, label: e.target.value }))}
+                    placeholder="Weekend offer"
+                  />
+                </div>
+                <div>
+                  <div className="text-[11px] font-medium text-muted-foreground">Real fee (shown crossed)</div>
+                  <input
+                    type="number"
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    value={contestOffer.originalFeeInr}
+                    onChange={(e) => setContestOffer((p) => ({ ...p, originalFeeInr: Number(e.target.value || 79) }))}
+                  />
+                </div>
+                <div>
+                  <div className="text-[11px] font-medium text-muted-foreground">Offer fee (shown live)</div>
+                  <input
+                    type="number"
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    value={contestOffer.promoFeeInr}
+                    onChange={(e) => setContestOffer((p) => ({ ...p, promoFeeInr: Number(e.target.value || 19) }))}
+                  />
+                </div>
+                <div>
+                  <div className="text-[11px] font-medium text-muted-foreground">Offer seats</div>
+                  <input
+                    type="number"
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    value={contestOffer.seatLimit}
+                    onChange={(e) => setContestOffer((p) => ({ ...p, seatLimit: Number(e.target.value || 250) }))}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <div className="text-[11px] font-medium text-muted-foreground">Offer ends at (ISO datetime)</div>
+                  <input
+                    type="datetime-local"
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    value={contestOffer.endsAtISO ? contestOffer.endsAtISO.slice(0, 16) : ""}
+                    onChange={(e) => setContestOffer((p) => ({ ...p, endsAtISO: e.target.value ? new Date(e.target.value).toISOString() : "" }))}
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                className="mt-3 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground"
+                onClick={async () => {
+                  const r = await fetch(`${apiBase}/admin/contest/offer`, {
+                    method: "POST",
+                    headers: { ...authHeaders, "Content-Type": "application/json" },
+                    body: JSON.stringify(contestOffer),
+                  });
+                  const d = await r.json().catch(() => ({}));
+                  if (!r.ok) return setErr(d?.message || "Save offer failed");
+                  toast.success("Contest offer saved");
+                }}
+              >
+                Save offer
               </button>
             </div>
           ) : null}
