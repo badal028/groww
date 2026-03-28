@@ -1,12 +1,19 @@
-/** Google Analytics 4 (gtag). Set `VITE_GA_MEASUREMENT_ID` in `.env` / production build. */
+/**
+ * Google Analytics 4 (gtag). Prefer the snippet in `index.html` so GA’s installer can detect it.
+ * Alternatively set `VITE_GA_MEASUREMENT_ID` for env-only injection (no duplicate if gtag already exists).
+ */
 export function initGoogleAnalytics() {
-  const id = import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined;
-  if (!id || typeof window === "undefined") return;
+  if (typeof window === "undefined") return;
 
   const w = window as Window & { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void };
-  const alreadyLoaded =
-    typeof w.gtag === "function" ||
-    Boolean(document.querySelector(`script[src*="googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}"]`));
+  if (typeof w.gtag === "function") return;
+
+  const id = import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined;
+  if (!id) return;
+
+  const alreadyLoaded = Boolean(
+    document.querySelector(`script[src*="googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}"]`)
+  );
   if (alreadyLoaded) return;
   w.dataLayer = w.dataLayer || [];
   w.gtag = function gtag(...args: unknown[]) {

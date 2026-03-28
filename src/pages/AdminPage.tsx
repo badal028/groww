@@ -40,6 +40,20 @@ function isoDateInIST(iso?: string) {
   }).format(d);
 }
 
+/** `datetime-local` must use the user's local calendar clock — never `iso.slice(0,16)` on UTC strings. */
+function isoToDatetimeLocalInputValue(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function datetimeLocalInputToISO(localStr: string): string {
+  const d = new Date(localStr);
+  if (!Number.isFinite(d.getTime())) return "";
+  return d.toISOString();
+}
+
 type TodaySignup = { id: string; email: string; createdAt: string };
 type AdminSummary = { today: string; signupsTodayCount: number; signupsToday: TodaySignup[] };
 
@@ -177,11 +191,38 @@ export default function AdminPage() {
     seatLimit: 250,
     endsAtISO: "",
   });
+  const [seedDummyCount, setSeedDummyCount] = useState("250");
 
   const authHeaders = useMemo(() => {
     if (!token) return {};
     return { Authorization: `Bearer ${token}` };
   }, [token]);
+
+  const refreshAdminListsAfterContestChange = useCallback(async () => {
+    const [sRes, dRes, uRes, cRes] = await Promise.all([
+      fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
+      fetch(`${apiBase}/admin/signups/daily?days=14`, { headers: authHeaders }),
+      fetch(`${apiBase}/admin/users/pnl`, { headers: authHeaders }),
+      fetch(`${apiBase}/admin/contest/current`, { headers: authHeaders }),
+    ]);
+    if (sRes.ok) {
+      const sData = await sRes.json().catch(() => null);
+      if (sData) setSummary(sData);
+    }
+    if (dRes.ok) {
+      const dData = await dRes.json().catch(() => null);
+      if (dData?.rows) setDailyRows(dData.rows);
+    }
+    if (uRes.ok) {
+      const uData = await uRes.json().catch(() => null);
+      if (uData?.users) setUsers(uData.users);
+    }
+    if (cRes.ok) {
+      const cData = await cRes.json().catch(() => null);
+      if (cData?.contest) setContest(cData.contest);
+    }
+  }, [authHeaders]);
+
   const usersByProfit = useMemo(
     () => [...users].sort((a, b) => Number(b.totalPnlInr || 0) - Number(a.totalPnlInr || 0)),
     [users],
@@ -579,13 +620,22 @@ export default function AdminPage() {
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <div className="text-[11px] font-medium text-muted-foreground">Offer ends at (ISO datetime)</div>
+                  <div className="text-[11px] font-medium text-muted-foreground">Offer ends at (local time)</div>
                   <input
                     type="datetime-local"
-                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                    value={contestOffer.endsAtISO ? contestOffer.endsAtISO.slice(0, 16) : ""}
-                    onChange={(e) => setContestOffer((p) => ({ ...p, endsAtISO: e.target.value ? new Date(e.target.value).toISOString() : "" }))}
+                    step={1}
+                    className="mt-1 w-full max-w-md rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    value={contestOffer.endsAtISO ? isoToDatetimeLocalInputValue(contestOffer.endsAtISO) : ""}
+                    onChange={(e) =>
+                      setContestOffer((p) => ({
+                        ...p,
+                        endsAtISO: e.target.value ? datetimeLocalInputToISO(e.target.value) : "",
+                      }))
+                    }
                   />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Picker uses your device timezone; saved value is UTC ISO for the server (e.g. end of 29 Mar → set 23:59:59).
+                  </p>
                 </div>
               </div>
               <button
@@ -692,89 +742,44 @@ export default function AdminPage() {
                 </button>
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <div className="min-w-[7rem]">
+                  <div className="text-[11px] font-medium text-muted-foreground">Seed dummy count</div>
+                  <input
+                    type="number"
+                    min={1}
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm tabular-nums"
+                    value={seedDummyCount}
+                    onChange={(e) => setSeedDummyCount(e.target.value)}
+                    placeholder="250"
+                  />
+                </div>
                 <button
                   type="button"
-                  className="rounded bg-primary px-3 py-1 text-[11px] text-primary-foreground disabled:opacity-50"
+                  className="rounded bg-primary px-3 py-2 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
                   onClick={async () => {
+                    const n = Math.floor(Number(seedDummyCount));
+                    if (!Number.isFinite(n) || n < 1) {
+                      toast.error("Enter a valid number (1 or more)");
+                      return;
+                    }
                     const r = await fetch(`${apiBase}/admin/contest/seed-dummy`, {
                       method: "POST",
                       headers: { ...authHeaders, "Content-Type": "application/json" },
-                      body: JSON.stringify({ count: 250 }),
+                      body: JSON.stringify({ count: n }),
                     });
                     const d = await r.json().catch(() => ({}));
                     if (!r.ok) return setErr(d?.message || "Seed failed");
                     setContest(d?.contest || null);
                     toast.success(`Seeded ${d?.added ?? 0} dummy users`);
-                    // Refresh signups + users so admin counters update too.
-                    const [sRes, dRes, uRes, cRes] = await Promise.all([
-                      fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
-                      fetch(`${apiBase}/admin/signups/daily?days=14`, { headers: authHeaders }),
-                      fetch(`${apiBase}/admin/users/pnl`, { headers: authHeaders }),
-                      fetch(`${apiBase}/admin/contest/current`, { headers: authHeaders }),
-                    ]);
-                    if (sRes.ok) {
-                      const sData = await sRes.json().catch(() => null);
-                      if (sData) setSummary(sData);
-                    }
-                    if (dRes.ok) {
-                      const dData = await dRes.json().catch(() => null);
-                      if (dData?.rows) setDailyRows(dData.rows);
-                    }
-                    if (uRes.ok) {
-                      const uData = await uRes.json().catch(() => null);
-                      if (uData?.users) setUsers(uData.users);
-                    }
-                    if (cRes.ok) {
-                      const cData = await cRes.json().catch(() => null);
-                      if (cData?.contest) setContest(cData.contest);
-                    }
+                    await refreshAdminListsAfterContestChange();
                   }}
                 >
-                  Feed 250 users
+                  Seed users
                 </button>
                 <button
                   type="button"
-                  className="rounded border border-border px-3 py-1 text-[11px] hover:bg-muted/30"
-                  onClick={async () => {
-                    const r = await fetch(`${apiBase}/admin/contest/seed-dummy`, {
-                      method: "POST",
-                      headers: { ...authHeaders, "Content-Type": "application/json" },
-                      body: JSON.stringify({ count: 300 }),
-                    });
-                    const d = await r.json().catch(() => ({}));
-                    if (!r.ok) return setErr(d?.message || "Seed failed");
-                    setContest(d?.contest || null);
-                    toast.success(`Seeded ${d?.added ?? 0} dummy users`);
-                    const [sRes, dRes, uRes, cRes] = await Promise.all([
-                      fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
-                      fetch(`${apiBase}/admin/signups/daily?days=14`, { headers: authHeaders }),
-                      fetch(`${apiBase}/admin/users/pnl`, { headers: authHeaders }),
-                      fetch(`${apiBase}/admin/contest/current`, { headers: authHeaders }),
-                    ]);
-                    if (sRes.ok) {
-                      const sData = await sRes.json().catch(() => null);
-                      if (sData) setSummary(sData);
-                    }
-                    if (dRes.ok) {
-                      const dData = await dRes.json().catch(() => null);
-                      if (dData?.rows) setDailyRows(dData.rows);
-                    }
-                    if (uRes.ok) {
-                      const uData = await uRes.json().catch(() => null);
-                      if (uData?.users) setUsers(uData.users);
-                    }
-                    if (cRes.ok) {
-                      const cData = await cRes.json().catch(() => null);
-                      if (cData?.contest) setContest(cData.contest);
-                    }
-                  }}
-                >
-                  Feed 300 users
-                </button>
-                <button
-                  type="button"
-                  className="rounded border border-loss/40 px-3 py-1 text-[11px] text-loss hover:bg-loss/10"
+                  className="rounded border border-loss/40 px-3 py-2 text-[11px] text-loss hover:bg-loss/10"
                   onClick={async () => {
                     const r = await fetch(`${apiBase}/admin/contest/unseed-dummy`, {
                       method: "POST",
@@ -784,28 +789,7 @@ export default function AdminPage() {
                     if (!r.ok) return setErr(d?.message || "Unseed failed");
                     setContest(d?.contest || null);
                     toast.success(`Removed ${d?.removed ?? 0} seeded users`);
-                    const [sRes, dRes, uRes, cRes] = await Promise.all([
-                      fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
-                      fetch(`${apiBase}/admin/signups/daily?days=14`, { headers: authHeaders }),
-                      fetch(`${apiBase}/admin/users/pnl`, { headers: authHeaders }),
-                      fetch(`${apiBase}/admin/contest/current`, { headers: authHeaders }),
-                    ]);
-                    if (sRes.ok) {
-                      const sData = await sRes.json().catch(() => null);
-                      if (sData) setSummary(sData);
-                    }
-                    if (dRes.ok) {
-                      const dData = await dRes.json().catch(() => null);
-                      if (dData?.rows) setDailyRows(dData.rows);
-                    }
-                    if (uRes.ok) {
-                      const uData = await uRes.json().catch(() => null);
-                      if (uData?.users) setUsers(uData.users);
-                    }
-                    if (cRes.ok) {
-                      const cData = await cRes.json().catch(() => null);
-                      if (cData?.contest) setContest(cData.contest);
-                    }
+                    await refreshAdminListsAfterContestChange();
                   }}
                 >
                   Unseed users

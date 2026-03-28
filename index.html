@@ -24,7 +24,17 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@investStocksFO" />
     <meta name="twitter:image" content="/favicon.svg" />
-    <!-- GA4: set VITE_GA_MEASUREMENT_ID at build time; see src/lib/analytics.ts -->
+
+    <!-- Google tag (gtag.js) — present in HTML so GA “Tag installation” tests see it; optional VITE_GA_MEASUREMENT_ID still works for env-only builds -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-5J8XBNM3SN"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() {
+        dataLayer.push(arguments);
+      }
+      gtag("js", new Date());
+      gtag("config", "G-5J8XBNM3SN");
+    </script>
   </head>
 
   <body>
