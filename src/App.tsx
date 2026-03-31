@@ -22,6 +22,7 @@ import PaperTradingLeaguePage from "./pages/seo/PaperTradingLeaguePage";
 import StockTradingContestPage from "./pages/seo/StockTradingContestPage";
 import FantasyStyleStockLeaguePage from "./pages/seo/FantasyStyleStockLeaguePage";
 import AboutGrowwTraderPage from "./pages/seo/AboutGrowwTraderPage";
+import VipMembershipPage from "./pages/VipMembershipPage";
 
 const queryClient = new QueryClient();
 
@@ -81,6 +82,7 @@ const App = () => (
               <Route path="/learn/stock-trading-contest-india" element={<StockTradingContestPage />} />
               <Route path="/learn/fantasy-style-stock-league" element={<FantasyStyleStockLeaguePage />} />
               <Route path="/about/growwtrader" element={<AboutGrowwTraderPage />} />
+              <Route path="/vip-membership" element={<VipMembershipPage />} />
               <Route path="/*" element={<AppLayout />} />
             </Routes>
           </BrowserRouter>
