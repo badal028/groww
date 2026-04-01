@@ -33,6 +33,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { usePaperOrders } from '@/hooks/usePaperOrders';
 import OrdersPanel from '@/components/OrdersPanel';
 import ProLeaguePanel from '@/components/ProLeaguePanel';
+import { usesHoldingsTabLabel } from '@/lib/accountLabels';
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || 'http://127.0.0.1:3001';
 
@@ -65,6 +66,8 @@ const StocksPage: React.FC = () => {
   const { positions, loading: positionsLoading } = usePaperPositions();
   const { orders, loading: ordersLoading } = usePaperOrders();
   const { user, logout } = useAuth();
+  const showHoldingsLabel = usesHoldingsTabLabel(user?.email);
+  const tabLabel = (tab: string) => (tab === 'Leaderboard' && showHoldingsLabel ? 'Holdings' : tab);
   const desktopTopTabs = ['Explore', 'Leaderboard', 'Positions', 'Orders', 'Watchlist'];
   const mobileTopTabs = ['Explore', 'Positions', 'Leaderboard', 'Orders', 'Watchlist', 'ETF'];
 
@@ -189,7 +192,7 @@ const StocksPage: React.FC = () => {
                   : 'border-transparent font-medium text-muted-foreground hover:text-foreground'
               }`}
             >
-              {cat}
+              {tabLabel(cat)}
             </button>
           ))}
         </div>
@@ -197,7 +200,7 @@ const StocksPage: React.FC = () => {
         {/* Section Title */}
         <div className="flex items-center justify-between px-4 py-3 lg:px-0">
           <h2 className="text-base font-semibold text-foreground lg:text-lg">
-            {activeTab === 'Explore' ? 'Explore' : activeTab}
+            {activeTab === 'Explore' ? 'Explore' : tabLabel(activeTab)}
           </h2>
           {status === 'auth-required' ? (
             <a
@@ -220,7 +223,7 @@ const StocksPage: React.FC = () => {
           </div>
         ) : activeTab === 'Leaderboard' ? (
           <div className="px-4 pb-6 lg:px-0">
-            <ProLeaguePanel compact />
+            <ProLeaguePanel compact holdingsWording={showHoldingsLabel} />
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 px-4 lg:px-0 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 lg:gap-4">
@@ -340,7 +343,7 @@ const StocksPage: React.FC = () => {
                   activeTab === tab ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {tab}
+                {tabLabel(tab)}
               </button>
             ))}
           </div>
@@ -392,8 +395,10 @@ const StocksPage: React.FC = () => {
               </div>
             ) : activeTab === 'Leaderboard' ? (
               <div className="mb-4">
-                <h2 className="mb-4 text-[1.25rem] font-semibold text-foreground">Pro-League leaderboard</h2>
-                <ProLeaguePanel />
+                <h2 className="mb-4 text-[1.25rem] font-semibold text-foreground">
+                  {showHoldingsLabel ? 'Pro-League holdings' : 'Pro-League leaderboard'}
+                </h2>
+                <ProLeaguePanel holdingsWording={showHoldingsLabel} />
               </div>
             ) : (
               <>

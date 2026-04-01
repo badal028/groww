@@ -14,14 +14,16 @@ type AuthUser = {
 type LoginPayload = { email: string; password: string };
 type SignupPayload = { name: string; email: string; password: string };
 
+type AuthResult = { ok: boolean; message?: string; user?: AuthUser | null };
+
 type AuthContextType = {
   user: AuthUser | null;
   token: string | null;
   loading: boolean;
-  login: (payload: LoginPayload) => Promise<{ ok: boolean; message?: string }>;
-  signup: (payload: SignupPayload) => Promise<{ ok: boolean; message?: string }>;
+  login: (payload: LoginPayload) => Promise<AuthResult>;
+  signup: (payload: SignupPayload) => Promise<AuthResult>;
   /** After Google OAuth redirect with JWT in URL hash. */
-  applyAuthToken: (jwt: string) => Promise<{ ok: boolean; message?: string }>;
+  applyAuthToken: (jwt: string) => Promise<AuthResult>;
   updateProfile: (payload: { name?: string; avatarUrl?: string }) => Promise<{ ok: boolean; message?: string }>;
   addRealBalance: (amount: number) => Promise<{ ok: boolean; message?: string }>;
   logout: () => void;
@@ -90,8 +92,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(TOKEN_KEY, data.token);
       setToken(data.token);
       const u = data.user;
-      setUser(u ? normalizeUser(u) : null);
-      return { ok: true };
+      const nu = u ? normalizeUser(u) : null;
+      setUser(nu);
+      return { ok: true, user: nu };
     } catch {
       return { ok: false, message: "Unable to connect backend" };
     }
@@ -112,10 +115,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const u = data.user;
       localStorage.setItem(TOKEN_KEY, jwt);
       setToken(jwt);
+      let nu: AuthUser | null = null;
       if (u && typeof u === "object") {
-        setUser(normalizeUser(u));
+        nu = normalizeUser(u);
+        setUser(nu);
       }
-      return { ok: true };
+      return { ok: true, user: nu };
     } catch {
       return { ok: false, message: "Unable to verify session" };
     }
@@ -131,13 +136,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await res.json();
       if (!res.ok) return { ok: false, message: data?.message || "Signup failed" };
       // Server returns JWT + user on signup — log in immediately (same as login).
+      let nu: AuthUser | null = null;
       if (data.token) {
         localStorage.setItem(TOKEN_KEY, data.token);
         setToken(data.token);
         const u = data.user;
-        setUser(u ? normalizeUser(u) : null);
+        nu = u ? normalizeUser(u) : null;
+        setUser(nu);
       }
-      return { ok: true };
+      return { ok: true, user: nu };
     } catch {
       return { ok: false, message: "Unable to connect backend" };
     }

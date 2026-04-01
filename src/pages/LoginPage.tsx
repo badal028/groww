@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import GrowwLogo from '@/components/GrowwLogo';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { isAdminEmail } from '@/lib/accountLabels';
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || 'http://127.0.0.1:3001';
 
@@ -45,7 +46,8 @@ const LoginPage: React.FC = () => {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
       if (r.ok) {
         toast.success('Signed in with Google');
-        navigate('/stocks', { replace: true });
+        const dest = r.user && isAdminEmail(r.user.email) ? '/admin' : '/stocks';
+        navigate(dest, { replace: true });
       } else {
         googleHandledRef.current = false;
         setError(r.message || 'Could not complete Google sign-in');
@@ -73,10 +75,12 @@ const LoginPage: React.FC = () => {
     }
     if (mode === 'signup') {
       toast.success('Account created. Welcome!');
-      navigate('/stocks');
+      const u = result.user;
+      navigate(u && isAdminEmail(u.email) ? '/admin' : '/stocks');
       return;
     }
-    navigate('/stocks');
+    const u = result.user;
+    navigate(u && isAdminEmail(u.email) ? '/admin' : '/stocks');
   };
 
   return (

@@ -494,10 +494,19 @@ const port = Number(process.env.PORT || 3001);
 const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:8080";
 const jwtSecret = process.env.JWT_SECRET || "dev-insecure-secret-change-this";
 const defaultWalletBalance = Number(process.env.DEFAULT_VIRTUAL_BALANCE_INR || 10_000_000);
+/** 10 crore virtual paper wallet for specific demo accounts (INR). */
+const MEGA_VIRTUAL_BALANCE_INR = 100_000_000;
+const megaVirtualEmails = new Set(["badal@gmail.com", "badal1@gmail.com"].map((e) => e.toLowerCase()));
+const virtualWalletForNewUser = (email) => {
+  const e = String(email || "")
+    .trim()
+    .toLowerCase();
+  return megaVirtualEmails.has(e) ? MEGA_VIRTUAL_BALANCE_INR : defaultWalletBalance;
+};
 const defaultContestFeeInr = Number(process.env.DEFAULT_CONTEST_FEE_INR || 79);
 const minContestParticipants = Number(process.env.MIN_CONTEST_PARTICIPANTS || 500);
 const maxContestParticipants = Number(process.env.MAX_CONTEST_PARTICIPANTS || 500);
-const adminEmail = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+const adminEmail = String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase();
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -839,12 +848,13 @@ app.post("/auth/signup", async (req, res) => {
     if (existing) return res.status(409).json({ status: "error", message: "Email already registered" });
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const emailNorm = String(email).trim().toLowerCase();
     const user = createUser({
       id: randomUUID(),
       name: String(name).trim(),
-      email: String(email).trim().toLowerCase(),
+      email: emailNorm,
       passwordHash,
-      walletInr: defaultWalletBalance,
+      walletInr: virtualWalletForNewUser(emailNorm),
       realWalletInr: 0,
       realizedPnlInr: 0,
       avatarUrl: null,
@@ -989,7 +999,7 @@ app.get("/auth/google/callback", async (req, res) => {
         email,
         passwordHash,
         googleSub: sub,
-        walletInr: defaultWalletBalance,
+        walletInr: virtualWalletForNewUser(email),
         realWalletInr: 0,
         realizedPnlInr: 0,
         avatarUrl,
@@ -1020,7 +1030,7 @@ app.get("/wallet", authMiddleware, (req, res) => {
 app.post("/wallet/reset", authMiddleware, (req, res) => {
   const updated = updateUser(req.user.id, (prev) => ({
     ...prev,
-    walletInr: defaultWalletBalance,
+    walletInr: virtualWalletForNewUser(prev.email),
     realizedPnlInr: 0,
     updatedAt: new Date().toISOString(),
   }));
