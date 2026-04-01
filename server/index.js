@@ -1535,8 +1535,9 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
   const contest = currentContestOrCreate();
   const cappedContest = augmentContestForApi(contest);
   const practiceContest = currentPracticeContestForApi();
-  // Use session calendar day (3:30 PM IST rollover), not persist contestDateISO — it stays stale while OPEN contest carries over.
-  const dayISO = activeContestDateISO();
+  // Prize session rolls at 3:30 PM IST; practice leaderboard should reset at 12:00 AM IST.
+  const prizeDayISO = activeContestDateISO();
+  const practiceDayISO = todayISOInIST();
   const hiddenSet = hiddenLeaderboardUserSet();
   const participants = cappedContest?.participants || [];
   const minParticipants = Math.max(1, Number(contest.minParticipants || minContestParticipants));
@@ -1564,8 +1565,8 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
       totalPnlInr: 0,
       rank: null,
     }));
-    const practiceQuotes = await getQuotesForUsersDay(practiceUsers, dayISO);
-    const practiceLeaderboard = dailyContestLeaderboardForUsers(practiceUsers, dayISO, practiceQuotes);
+    const practiceQuotes = await getQuotesForUsersDay(practiceUsers, practiceDayISO);
+    const practiceLeaderboard = dailyContestLeaderboardForUsers(practiceUsers, practiceDayISO, practiceQuotes);
     const me = leaderboard.find((x) => x.userId === req.user.id) || null;
     const mePractice = practiceLeaderboard.find((x) => x.userId === req.user.id) || null;
     return res.json({
@@ -1583,9 +1584,10 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
     });
   }
 
-  const allQuotes = await getQuotesForUsersDay(practiceUsers, dayISO);
-  const leaderboard = dailyContestLeaderboardForUsers(users, dayISO, allQuotes);
-  const practiceLeaderboard = dailyContestLeaderboardForUsers(practiceUsers, dayISO, allQuotes);
+  const prizeQuotes = await getQuotesForUsersDay(users, prizeDayISO);
+  const practiceQuotes = await getQuotesForUsersDay(practiceUsers, practiceDayISO);
+  const leaderboard = dailyContestLeaderboardForUsers(users, prizeDayISO, prizeQuotes);
+  const practiceLeaderboard = dailyContestLeaderboardForUsers(practiceUsers, practiceDayISO, practiceQuotes);
   const me = leaderboard.find((x) => x.userId === req.user.id) || null;
   const mePractice = practiceLeaderboard.find((x) => x.userId === req.user.id) || null;
   return res.json({
@@ -1788,15 +1790,16 @@ app.get("/admin/contest/winners", authMiddleware, ensureAdmin, async (req, res) 
   const contest = currentContestOrCreate();
   const hiddenSet = hiddenLeaderboardUserSet();
   const users = getAllUsers().filter((u) => !hiddenSet.has(String(u.id)));
-  const dayISO = activeContestDateISO();
+  const prizeDayISO = activeContestDateISO();
+  const practiceDayISO = todayISOInIST();
   const userById = new Map(users.map((u) => [u.id, u]));
   const participants = Array.isArray(contest?.participants) ? contest.participants : [];
   const prizeUsers = participants
     .map((p) => userById.get(String(p.userId)))
     .filter(Boolean);
-  const prizeQuotes = await getQuotesForUsersDay(prizeUsers, dayISO);
-  const practiceQuotes = await getQuotesForUsersDay(users, dayISO);
-  const computedPrize = dailyContestLeaderboardForUsers(prizeUsers, dayISO, prizeQuotes).slice(0, 3);
+  const prizeQuotes = await getQuotesForUsersDay(prizeUsers, prizeDayISO);
+  const practiceQuotes = await getQuotesForUsersDay(users, practiceDayISO);
+  const computedPrize = dailyContestLeaderboardForUsers(prizeUsers, prizeDayISO, prizeQuotes).slice(0, 3);
   const computedPrizeByUserId = new Map(computedPrize.map((r) => [r.userId, r]));
   const prizeTop3 =
     contest?.status === "FINALIZED" && Array.isArray(contest?.payouts) && contest.payouts.length
@@ -1818,7 +1821,7 @@ app.get("/admin/contest/winners", authMiddleware, ensureAdmin, async (req, res) 
           })
       : computedPrize.map((r) => ({ ...r, amountInr: 0, payoutStatus: contest?.status === "FINALIZED" ? "PENDING" : "NOT_FINALIZED" }));
 
-  const practiceTop3 = dailyContestLeaderboardForUsers(users, dayISO, practiceQuotes).slice(0, 3).map((r) => ({
+  const practiceTop3 = dailyContestLeaderboardForUsers(users, practiceDayISO, practiceQuotes).slice(0, 3).map((r) => ({
     ...r,
     amountInr: 0,
     payoutStatus: "PRACTICE",
