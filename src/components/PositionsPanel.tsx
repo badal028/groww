@@ -10,7 +10,7 @@ import {
 } from "@/data/mockData";
 import type { PaperPosition } from "@/hooks/usePaperPositions";
 import { usePositionMktPrices } from "@/hooks/usePositionMktPrices";
-import { ListFilter, LineChart, SquareArrowUpRight, LayoutList } from "lucide-react";
+import { ListFilter, LineChart, SquareArrowUpRight, LayoutList, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { PAPER_POSITIONS_REFRESH_EVENT } from "@/hooks/usePaperTrading";
@@ -324,9 +324,19 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
                       {exitingKey === p.instrumentKey ? "…" : "Exit"}
                     </button>
                   )}
-                  <span className="rounded bg-profit/20 px-1.5 py-0.5 text-[10px] font-semibold text-profit">
-                    B &gt;
-                  </span>
+                  {p.exited ? (
+                    <span className="inline-flex items-center gap-0.5 rounded bg-profit/20 px-1.5 py-0.5 text-[10px] font-semibold text-profit">
+                      <span className="pt-[1px]">B</span>
+                      <ChevronRight className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-0.5 rounded-full bg-[#e8eaf6] px-2 py-0.5 text-[10px] font-medium text-[#5c5f8a] dark:bg-[#131D36] dark:text-[#9DA0D6]">
+                      <span className="pt-[1px]">
+                        +{Math.round(p.quantity)}
+                      </span>
+                      <ChevronRight className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="flex items-start justify-between gap-3">

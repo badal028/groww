@@ -118,10 +118,24 @@ const augmentContestForApi = (contest) => {
   };
 };
 
+const hiddenLeaderboardUserSet = () => new Set((getSiteSettings().leaderboardHiddenUserIds || []).map((x) => String(x)));
+
+/** Hard-exclude these emails from prize + practice leaderboards (not only admin-hidden IDs). */
+const LEADERBOARD_EXCLUDED_EMAILS = new Set(["badal@gmail.com", "badal1@gmail.com"].map((e) => e.trim().toLowerCase()));
+
+const isLeaderboardParticipantUser = (u) => {
+  if (!u) return false;
+  const em = String(u.email || "").trim().toLowerCase();
+  if (LEADERBOARD_EXCLUDED_EMAILS.has(em)) return false;
+  if (hiddenLeaderboardUserSet().has(String(u.id))) return false;
+  return true;
+};
+
+const VIRTUAL_WALLET_CONTROL_EMAILS = new Set(["badal@gmail.com", "badal1@gmail.com"].map((e) => e.trim().toLowerCase()));
+
 const currentPracticeContestForApi = () => {
   const today = activeContestDateISO();
   const users = getAllUsers();
-  const hiddenSet = new Set((getSiteSettings().leaderboardHiddenUserIds || []).map((x) => String(x)));
   return {
     id: `practice-${today}`,
     title: "Practice League",
@@ -131,7 +145,7 @@ const currentPracticeContestForApi = () => {
     minParticipants: 1,
     maxParticipants: 999999,
     participants: users
-      .filter((u) => !hiddenSet.has(String(u.id)))
+      .filter((u) => isLeaderboardParticipantUser(u))
       .map((u) => ({ userId: u.id, joinedAt: String(u.createdAt || new Date().toISOString()) })),
     payouts: [],
     prizePoolInr: { first: 0, second: 0, third: 0 },
@@ -141,8 +155,6 @@ const currentPracticeContestForApi = () => {
     updatedAt: new Date().toISOString(),
   };
 };
-
-const hiddenLeaderboardUserSet = () => new Set((getSiteSettings().leaderboardHiddenUserIds || []).map((x) => String(x)));
 
 const getContestOfferState = (contest) => {
   const offer = getSiteSettings().contestOffer || {};
@@ -1491,8 +1503,7 @@ app.get("/contest/current", authMiddleware, (req, res) => {
 });
 
 app.post("/contest/join", authMiddleware, (req, res) => {
-  const hiddenSet = hiddenLeaderboardUserSet();
-  if (hiddenSet.has(String(req.user.id))) {
+  if (!isLeaderboardParticipantUser(req.user)) {
     return res.status(400).json({ status: "error", message: "User is removed from leaderboard participation" });
   }
   const contest = currentContestOrCreate();
@@ -1539,15 +1550,14 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
   // Prize session rolls at 3:30 PM IST; practice leaderboard should reset at 12:00 AM IST.
   const prizeDayISO = activeContestDateISO();
   const practiceDayISO = todayISOInIST();
-  const hiddenSet = hiddenLeaderboardUserSet();
   const participants = cappedContest?.participants || [];
   const minParticipants = Math.max(1, Number(contest.minParticipants || minContestParticipants));
   const contestStarted = participants.length >= minParticipants;
   const joinedAtByUserId = new Map(
     participants.map((p) => [String(p.userId), String(p.joinedAt || "")]),
   );
-  const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id) && !hiddenSet.has(String(u.id)));
-  const practiceUsers = getAllUsers().filter((u) => !hiddenSet.has(String(u.id)));
+  const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id) && isLeaderboardParticipantUser(u));
+  const practiceUsers = getAllUsers().filter((u) => isLeaderboardParticipantUser(u));
 
   // If not started, keep leaderboard stable + non-winner (no P&L).
   if (!contestStarted) {
@@ -1620,6 +1630,49 @@ app.get("/paper/positions", authMiddleware, (req, res) => {
   }));
   const positions = persisted?.positions || pruned;
   res.json({ status: "ok", positions });
+});
+
+/** Set or add virtual (paper) wallet for allowlisted demo accounts only. */
+app.post("/paper/wallet/virtual", authMiddleware, (req, res) => {
+  try {
+    const em = String(req.user.email || "")
+      .trim()
+      .toLowerCase();
+    if (!VIRTUAL_WALLET_CONTROL_EMAILS.has(em)) {
+      return res.status(403).json({ status: "error", message: "Virtual wallet control not enabled for this account" });
+    }
+    const { setInr, addInr } = req.body || {};
+    const hasSet = setInr !== undefined && setInr !== null && String(setInr).trim() !== "";
+    const hasAdd = addInr !== undefined && addInr !== null && String(addInr).trim() !== "";
+    if (!hasSet && !hasAdd) {
+      return res.status(400).json({ status: "error", message: "Provide setInr and/or addInr" });
+    }
+    const updated = updateUser(req.user.id, (prev) => {
+      let w = Number(prev.walletInr || 0);
+      if (hasSet) {
+        const n = Number(setInr);
+        if (!Number.isFinite(n) || n < 0) {
+          throw new Error("setInr must be a non-negative number");
+        }
+        w = Number(n.toFixed(2));
+      }
+      if (hasAdd) {
+        const a = Number(addInr);
+        if (!Number.isFinite(a)) {
+          throw new Error("addInr must be a finite number");
+        }
+        w = Number((w + a).toFixed(2));
+        if (w < 0) {
+          throw new Error("Resulting balance cannot be negative");
+        }
+      }
+      return { ...prev, walletInr: w, updatedAt: new Date().toISOString() };
+    });
+    if (!updated) return res.status(404).json({ status: "error", message: "User not found" });
+    return res.json({ status: "ok", walletInr: updated.walletInr });
+  } catch (e) {
+    return res.status(400).json({ status: "error", message: e?.message || "Update failed" });
+  }
 });
 
 // -------------------------
@@ -1789,8 +1842,7 @@ app.get("/admin/contest/current", authMiddleware, ensureAdmin, (req, res) => {
 
 app.get("/admin/contest/winners", authMiddleware, ensureAdmin, async (req, res) => {
   const contest = currentContestOrCreate();
-  const hiddenSet = hiddenLeaderboardUserSet();
-  const users = getAllUsers().filter((u) => !hiddenSet.has(String(u.id)));
+  const users = getAllUsers().filter((u) => isLeaderboardParticipantUser(u));
   const prizeDayISO = activeContestDateISO();
   const practiceDayISO = todayISOInIST();
   const userById = new Map(users.map((u) => [u.id, u]));
@@ -2231,8 +2283,7 @@ app.post("/admin/contest/finalize", authMiddleware, ensureAdmin, async (req, res
     });
   }
 
-  const hiddenSet = hiddenLeaderboardUserSet();
-  const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id) && !hiddenSet.has(String(u.id)));
+  const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id) && isLeaderboardParticipantUser(u));
   const dayISO = activeContestDateISO();
   const quotes = await getQuotesForUsersDay(users, dayISO);
   const ranking = dailyContestLeaderboardForUsers(users, dayISO, quotes).map((r) => ({
@@ -2318,7 +2369,6 @@ app.get("/admin/users/:id/positions", authMiddleware, ensureAdmin, (req, res) =>
 
 app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
   const users = getAllUsers().filter((u) => !isSeededUser(u));
-  const hiddenSet = hiddenLeaderboardUserSet();
 
   const realizedByUser = new Map();
   for (const u of users) {
@@ -2344,7 +2394,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
         realizedPnlInr: Number(u.realizedPnlInr ?? 0),
         openPnlInr: 0,
         totalPnlInr: Number(u.realizedPnlInr ?? 0),
-        hiddenFromLeaderboard: hiddenSet.has(String(u.id)),
+        hiddenFromLeaderboard: !isLeaderboardParticipantUser(u),
       })),
     });
   }
@@ -2382,7 +2432,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
           realizedPnlInr: Number(u.realizedPnlInr ?? 0),
           openPnlInr: 0,
           totalPnlInr: Number(u.realizedPnlInr ?? 0),
-          hiddenFromLeaderboard: hiddenSet.has(String(u.id)),
+          hiddenFromLeaderboard: !isLeaderboardParticipantUser(u),
         })),
       });
     }
@@ -2415,7 +2465,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
           realizedPnlInr: realized,
           openPnlInr: open,
           totalPnlInr: Number((realized + open).toFixed(2)),
-          hiddenFromLeaderboard: hiddenSet.has(String(u.id)),
+          hiddenFromLeaderboard: !isLeaderboardParticipantUser(u),
         };
       }),
     });
@@ -2550,6 +2600,8 @@ app.post("/paper/order", authMiddleware, (req, res) => {
       const orders = prev.orders || [];
       const positions = prev.positions || [];
       let walletInr = Number(prev.walletInr || 0);
+      let realizedDelta = 0;
+      const prevRealizedAgg = Number(prev.realizedPnlInr || 0);
       const nowISO = new Date().toISOString();
 
       const posIdx = positions.findIndex(
@@ -2603,8 +2655,21 @@ app.post("/paper/order", authMiddleware, (req, res) => {
         if (existingPos.quantity < qty) {
           throw new Error("Insufficient quantity to sell");
         }
+        const prevAvgForSell = Number(existingPos.avgPrice);
         existingPos.quantity = Number((existingPos.quantity - qty).toFixed(6));
         walletInr = Number((walletInr + notional).toFixed(2));
+        const fullyClosed =
+          !Number.isFinite(existingPos.quantity) || existingPos.quantity <= 0 || existingPos.quantity < 1e-9;
+        if (fullyClosed) {
+          const lineRealized = Number(((px - prevAvgForSell) * qty).toFixed(2));
+          realizedDelta = lineRealized;
+          existingPos.quantity = 0;
+          existingPos.avgPrice = 0;
+          existingPos.exited = true;
+          existingPos.exitedAt = nowISO;
+          existingPos.exitPrice = Number(px.toFixed(2));
+          existingPos.realizedPnlInr = lineRealized;
+        }
       }
 
       if (posIdx >= 0) positions[posIdx] = existingPos;
@@ -2625,6 +2690,7 @@ app.post("/paper/order", authMiddleware, (req, res) => {
         walletInr,
         positions: filteredPositions,
         orders,
+        realizedPnlInr: Number((prevRealizedAgg + realizedDelta).toFixed(2)),
         updatedAt: new Date().toISOString(),
       };
     });

@@ -4,6 +4,7 @@ import { ArrowLeft, Settings, Wallet, Package, User, Building2, Share2, Headphon
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { canControlVirtualWallet } from '@/lib/demoAccounts';
 
 const menuItems = [
   { icon: Wallet, label: '$0.00', sublabel: 'Stocks, F&O balance', action: 'Virtual balance' },
@@ -58,6 +59,10 @@ const ProfilePage: React.FC = () => {
   const [addMoneyOpen, setAddMoneyOpen] = useState(false);
   const [addAmountInput, setAddAmountInput] = useState('');
   const [addingMoney, setAddingMoney] = useState(false);
+  const [virtualWalletOpen, setVirtualWalletOpen] = useState(false);
+  const [setBalanceInput, setSetBalanceInput] = useState('');
+  const [addBalanceInput, setAddBalanceInput] = useState('');
+  const [virtualSaving, setVirtualSaving] = useState(false);
   const location = useLocation();
   const isCashfreeReturn = location.search.includes("cashfreeOrderId=");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -68,6 +73,7 @@ const ProfilePage: React.FC = () => {
   }, [user?.name]);
   const walletLabel = `₹${Number(user?.walletInr ?? 0).toLocaleString('en-IN')}`;
   const realWalletLabel = `₹${Number(user?.realWalletInr ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const showVirtualWalletTools = canControlVirtualWallet(user?.email);
 
   const userMenuItems = menuItems.map((item, index) => {
     if (item.icon !== Wallet) return item;
@@ -79,6 +85,66 @@ const ProfilePage: React.FC = () => {
   const openAddMoney = () => {
     setAddAmountInput('');
     setAddMoneyOpen(true);
+  };
+
+  const applyVirtualSet = async () => {
+    const n = Number(String(setBalanceInput).replace(/,/g, '').trim());
+    if (!Number.isFinite(n) || n < 0) {
+      toast.error('Enter a non-negative number for virtual balance');
+      return;
+    }
+    if (!token) {
+      toast.error('Login required');
+      return;
+    }
+    setVirtualSaving(true);
+    try {
+      const r = await fetch(`${apiBase}/paper/wallet/virtual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ setInr: n }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d?.message || 'Could not update balance');
+      await refreshMe();
+      toast.success('Virtual balance updated');
+      setSetBalanceInput('');
+      setVirtualWalletOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Update failed');
+    } finally {
+      setVirtualSaving(false);
+    }
+  };
+
+  const applyVirtualAdd = async () => {
+    const n = Number(String(addBalanceInput).replace(/,/g, '').trim());
+    if (!Number.isFinite(n)) {
+      toast.error('Enter a valid amount to add');
+      return;
+    }
+    if (!token) {
+      toast.error('Login required');
+      return;
+    }
+    setVirtualSaving(true);
+    try {
+      const r = await fetch(`${apiBase}/paper/wallet/virtual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ addInr: n }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d?.message || 'Could not add to balance');
+      await refreshMe();
+      toast.success('Amount added to virtual balance');
+      setAddBalanceInput('');
+      setVirtualWalletOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Update failed');
+    } finally {
+      setVirtualSaving(false);
+    }
   };
 
   const handleAddMoney = async () => {
@@ -242,7 +308,14 @@ const ProfilePage: React.FC = () => {
             <button
               key={i}
               type="button"
-              onClick={i === 1 ? openAddMoney : undefined}
+              onClick={() => {
+                if (i === 1) openAddMoney();
+                if (i === 3 && showVirtualWalletTools) {
+                  setSetBalanceInput('');
+                  setAddBalanceInput('');
+                  setVirtualWalletOpen(true);
+                }
+              }}
               className="flex w-full items-center justify-between border-b border-border py-4 text-left hover:bg-muted/50 transition-colors rounded px-2 -mx-2"
             >
               <div className="flex items-center gap-4">
@@ -259,6 +332,11 @@ const ProfilePage: React.FC = () => {
                   {item.action}
                 </span>
               )}
+              {i === 3 && showVirtualWalletTools ? (
+                <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
+                  Adjust
+                </span>
+              ) : null}
             </button>
           ))}
 
@@ -273,6 +351,45 @@ const ProfilePage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <Dialog open={virtualWalletOpen} onOpenChange={setVirtualWalletOpen}>
+        <DialogContent className="max-w-sm px-5 sm:px-6">
+          <h3 className="text-base font-semibold text-foreground">Virtual paper balance</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Set your full virtual balance (0 or any amount), or add to the current balance (e.g. 100000 for one lac).
+          </p>
+          <label className="mt-4 block text-xs font-medium text-muted-foreground">Set balance to (INR)</label>
+          <input
+            value={setBalanceInput}
+            onChange={(e) => setSetBalanceInput(e.target.value.replace(/[^\d.]/g, ''))}
+            placeholder="e.g. 0 or 100000000"
+            className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+          />
+          <button
+            type="button"
+            className="mt-2 w-full rounded-md bg-primary py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+            onClick={() => void applyVirtualSet()}
+            disabled={virtualSaving}
+          >
+            Apply new balance
+          </button>
+          <label className="mt-4 block text-xs font-medium text-muted-foreground">Add to balance (INR)</label>
+          <input
+            value={addBalanceInput}
+            onChange={(e) => setAddBalanceInput(e.target.value.replace(/[^\d.]/g, ''))}
+            placeholder="e.g. 100000"
+            className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+          />
+          <button
+            type="button"
+            className="mt-2 w-full rounded-md border border-border py-2 text-sm font-semibold text-foreground disabled:opacity-60"
+            onClick={() => void applyVirtualAdd()}
+            disabled={virtualSaving}
+          >
+            Add amount
+          </button>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={addMoneyOpen} onOpenChange={setAddMoneyOpen}>
         <DialogContent className="max-w-sm px-5 sm:px-6">
