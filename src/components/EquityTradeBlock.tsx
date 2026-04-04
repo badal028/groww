@@ -4,6 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { getEquityLotSize, isValidEquityQty } from "@/utils/equityLots";
 import { cn } from "@/lib/utils";
 import { isWithinMarketHoursIST } from "@/utils/marketHours";
+import { formatInrCompact } from "@/utils/inrCompact";
+import { RefreshCw } from "lucide-react";
 
 type Props = {
   stock: Stock;
@@ -13,6 +15,8 @@ type Props = {
   className?: string;
   /** e.g. fixed bottom bar on mobile */
   variant?: "card" | "bar";
+  /** Deep link from positions sheet: ?orderSide=BUY|SELL */
+  initialOrderSide?: "BUY" | "SELL";
 };
 
 const EquityTradeBlock: React.FC<Props> = ({
@@ -22,16 +26,18 @@ const EquityTradeBlock: React.FC<Props> = ({
   onSubmit,
   className,
   variant = "card",
+  initialOrderSide,
 }) => {
   const { user } = useAuth();
   const lotSize = useMemo(() => getEquityLotSize(stock), [stock.sector, stock.lotSize]);
-  const [side, setSide] = useState<"BUY" | "SELL">("BUY");
+  const [side, setSide] = useState<"BUY" | "SELL">(initialOrderSide ?? "BUY");
   const [qtyInput, setQtyInput] = useState(String(lotSize));
+  const [approxRefreshing, setApproxRefreshing] = useState(false);
 
   useEffect(() => {
     setQtyInput(String(lotSize));
-    setSide("BUY");
-  }, [stock.id, stock.symbol, lotSize]);
+    setSide(initialOrderSide ?? "BUY");
+  }, [stock.id, stock.symbol, lotSize, initialOrderSide]);
 
   const qtyNum = useMemo(() => {
     const n = parseInt(qtyInput.replace(/\D/g, ""), 10);
@@ -170,22 +176,30 @@ const EquityTradeBlock: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="mt-4 flex items-start justify-between gap-3 text-xs">
-        <div>
-          <p className="text-muted-foreground">Balance</p>
-          <p className="mt-0.5 font-semibold text-foreground">
-            ₹{balance.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-muted-foreground">
-            {side === "BUY" ? "Approx. required" : "Approx. value"}
-          </p>
-          <p className="mt-0.5 font-semibold text-foreground">
+      <div className="mt-4 flex items-center justify-between gap-2 text-xs">
+        <span className="min-w-0 shrink truncate text-muted-foreground">
+          Balance : <span className="font-semibold text-foreground">{formatInrCompact(balance)}</span>
+        </span>
+        <div className="flex min-w-0 max-w-[58%] items-center justify-end gap-1.5">
+          <span className="inline-flex shrink-0 border-b border-dashed border-muted-foreground/80 pb-px text-muted-foreground">
+            {side === "BUY" ? "Approx req :" : "Approx val :"}
+          </span>
+          <span className="min-w-0 truncate text-xs font-semibold text-foreground">
             {qtyValid && approxAmount > 0
-              ? `₹${approxAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+              ? `₹${approxAmount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
               : "—"}
-          </p>
+          </span>
+          <button
+            type="button"
+            aria-label="Refresh estimate"
+            className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => {
+              setApproxRefreshing(true);
+              window.setTimeout(() => setApproxRefreshing(false), 450);
+            }}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", approxRefreshing && "animate-spin")} />
+          </button>
         </div>
       </div>
 
@@ -200,7 +214,7 @@ const EquityTradeBlock: React.FC<Props> = ({
           side === "BUY" ? "bg-primary" : "bg-loss",
         )}
       >
-        {placing ? "Placing..." : side === "BUY" ? "Buy" : "Sell"}
+        {side === "BUY" ? "Buy" : "Sell"}
       </button>
     </div>
   );

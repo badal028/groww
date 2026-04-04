@@ -3,8 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { showOrderExecutedToast } from "@/utils/tradingToasts";
-import { formatFoOrderDescriptionLine } from "@/utils/tradingToasts";
 import { usePaperTrading } from "@/hooks/usePaperTrading";
 import { useAuth } from "@/hooks/useAuth";
 import { isValidEquityQty } from "@/utils/equityLots";
@@ -12,13 +10,16 @@ import type { FoContract } from "@/components/fo/FoOptionChainModal";
 import { cn } from "@/lib/utils";
 import { detectProvider } from "@/services/marketData";
 import { subscribeKiteMarket } from "@/services/kiteMarketWsHub";
-import { ArrowLeft, ChevronDown, Settings } from "lucide-react";
+import { ArrowLeft, ChevronDown, RefreshCw, Settings } from "lucide-react";
+import { formatInrCompact } from "@/utils/inrCompact";
 import { usePaperPositions } from "@/hooks/usePaperPositions";
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contract: FoContract | null;
+  /** Open sheet with Buy/Sell pinned (e.g. position quick actions). */
+  openWithSide?: "BUY" | "SELL";
 };
 
 function defaultFoLotSize(contract: FoContract | null): number {
@@ -40,7 +41,7 @@ type TouchMode = "rise" | "fall" | "flat" | null;
 const TOUCH_EPS = 0.02;
 const MARKET_HOURS_BYPASS_EMAILS = new Set(["badal@gmail.com"]);
 
-export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
+export default function FoTradeModal({ open, onOpenChange, contract, openWithSide }: Props) {
   const [isDesktop, setIsDesktop] = useState<boolean>(() =>
     typeof window !== "undefined" ? window.matchMedia("(min-width: 1024px)").matches : false,
   );
@@ -54,7 +55,8 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   /** Live LTP for “Current” line (limit field stays user-controlled). */
   const [liveLtp, setLiveLtp] = useState<number | null>(null);
-  const [touchHint, setTouchHint] = useState<"rise" | "fall" | "flat" | null>(null);
+  const [approxRefreshing, setApproxRefreshing] = useState(false);
+  const [viewportBottomInset, setViewportBottomInset] = useState(0);
   const provider = useMemo(() => detectProvider(), []);
 
   const ltpForSnapRef = useRef(0);
@@ -92,13 +94,16 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
     if (!contract) return;
     setPriceField("");
     setQtyInput(String(defaultFoLotSize(contract)));
-    setSide("BUY");
   }, [contract]);
 
   useEffect(() => {
-    if (!contract) return;
+    if (!open || !contract) return;
+    if (openWithSide) {
+      setSide(openWithSide);
+      return;
+    }
     setSide(hasOpenPositionForContract ? "SELL" : "BUY");
-  }, [contract, hasOpenPositionForContract]);
+  }, [open, contract, hasOpenPositionForContract, openWithSide]);
 
   useEffect(() => {
     if (!open || !contract) {
@@ -131,14 +136,12 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
   useEffect(() => {
     if (!open || !contract) {
       touchModeRef.current = null;
-      setTouchHint(null);
       prevLtpRef.current = null;
       autoFilledRef.current = false;
       return;
     }
     if (isMarketOrder) {
       touchModeRef.current = null;
-      setTouchHint(null);
       prevLtpRef.current = null;
       autoFilledRef.current = false;
       return;
@@ -146,19 +149,15 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
     const lim = Number(priceField);
     if (!Number.isFinite(lim) || lim <= 0) {
       touchModeRef.current = null;
-      setTouchHint(null);
       return;
     }
     const ltp0 = ltpForSnapRef.current;
     if (Math.abs(lim - ltp0) <= TOUCH_EPS) {
       touchModeRef.current = "flat";
-      setTouchHint("flat");
     } else if (lim > ltp0) {
       touchModeRef.current = "rise";
-      setTouchHint("rise");
     } else {
       touchModeRef.current = "fall";
-      setTouchHint("fall");
     }
     prevLtpRef.current = null;
     autoFilledRef.current = false;
@@ -222,9 +221,16 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
   const showLotError =
     qtyInput.trim() !== "" && qtyNum > 0 && !qtyValid && !isExpired;
 
-  /** At live premium: qty × current (e.g. 65 × LTP, 130 × LTP for 2 lots). */
-  const approxAtCurrent =
-    qtyValid && displayCurrentLtp > 0 ? qtyNum * displayCurrentLtp : 0;
+  /** Shown in footer: market → qty×LTP; limit → qty×limit when valid. */
+  const approxDisplayed = useMemo(() => {
+    if (!qtyValid || qtyNum <= 0) return 0;
+    if (isMarketOrder) {
+      return displayCurrentLtp > 0 ? qtyNum * displayCurrentLtp : 0;
+    }
+    const lim = Number(priceField);
+    if (Number.isFinite(lim) && lim > 0) return qtyNum * lim;
+    return 0;
+  }, [qtyValid, qtyNum, isMarketOrder, priceField, displayCurrentLtp]);
   const committedUnitPx = isMarketOrder ? displayCurrentLtp : Number(priceField);
   /** BUY check: market uses LTP; limit uses typed price. */
   const maxBuyCommit =
@@ -288,11 +294,6 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
       const marketable =
         side === "BUY" ? limitPx >= ltpNow - TOUCH_EPS : limitPx <= ltpNow + TOUCH_EPS;
       if (!marketable) {
-        toast.message(
-          side === "BUY"
-            ? `Limit BUY placed at ₹${limitPx.toFixed(2)} (waiting for price to fall)`
-            : `Limit SELL placed at ₹${limitPx.toFixed(2)} (waiting for price to rise)`,
-        );
         return false;
       }
     }
@@ -320,15 +321,6 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
       toast.error(result.message || "Order failed");
       return false;
     }
-    showOrderExecutedToast(
-      formatFoOrderDescriptionLine(
-        contract.underlyingSymbol,
-        contract.expiry,
-        contract.strike,
-        contract.optionType,
-        qtyNum,
-      ),
-    );
     onOpenChange(false);
     navigate("/stocks?tab=Positions");
     return true;
@@ -344,7 +336,28 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
     priceField,
     onOpenChange,
     navigate,
+    openWithSide,
   ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isDesktop || !open) {
+      setViewportBottomInset(0);
+      return;
+    }
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const inset = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0));
+      setViewportBottomInset(inset);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, [isDesktop, open]);
 
   const onTrade = () => void submitOrder();
 
@@ -474,12 +487,6 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
           autoComplete="off"
         />
       </div>
-      {!isMarketOrder && touchHint && (
-        <p className="mt-1 text-[11px] leading-snug text-white/60">
-          Auto-{side === "BUY" ? "buy" : "sell"} when price{" "}
-          {touchHint === "rise" ? "rises to" : touchHint === "fall" ? "falls to" : "matches"} your limit.
-        </p>
-      )}
       <div className="mt-2 flex justify-end">
         <button type="button" className="inline-flex w-fit border-b border-dashed border-white/50 text-sm text-white">
           Add stoploss/target
@@ -510,22 +517,30 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
         </div>
       )}
 
-      <div className="mt-4 flex items-start justify-between gap-3 text-xs">
-        <div>
-          <p className="text-white/60">Balance</p>
-          <p className="mt-0.5 font-semibold text-white">
-            ₹{balance.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-white/60">
-            {side === "BUY" ? "Approx. required" : "Approx. value"}
-          </p>
-          <p className="mt-0.5 font-semibold text-white">
-            {qtyValid && approxAtCurrent > 0
-              ? `₹${approxAtCurrent.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+      <div className="mt-4 flex items-center justify-between gap-2 text-[13px] text-white">
+        <span className="min-w-0 shrink truncate tabular-nums text-white/90">
+          Balance : <span className="font-semibold text-white">{formatInrCompact(balance)}</span>
+        </span>
+        <div className="flex min-w-0 max-w-[58%] items-center justify-end gap-1.5 tabular-nums">
+          <span className="inline-flex shrink-0 border-b border-dashed border-white/50 pb-px text-[13px] text-white/70">
+            {side === "BUY" ? "Approx req :" : "Approx val :"}
+          </span>
+          <span className="min-w-0 truncate text-[13px] font-semibold text-white">
+            {qtyValid && approxDisplayed > 0
+              ? `₹${approxDisplayed.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
               : "—"}
-          </p>
+          </span>
+          <button
+            type="button"
+            aria-label="Refresh estimate"
+            className="shrink-0 rounded p-0.5 text-white/75 hover:bg-white/10 hover:text-white"
+            onClick={() => {
+              setApproxRefreshing(true);
+              window.setTimeout(() => setApproxRefreshing(false), 450);
+            }}
+          >
+            <RefreshCw className={cn("h-4 w-4", approxRefreshing && "animate-spin")} />
+          </button>
         </div>
       </div>
 
@@ -551,7 +566,7 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
             side === "BUY" ? "bg-primary" : "bg-loss",
           )}
         >
-          {placing ? "Placing..." : side === "BUY" ? "Buy" : "Sell"}
+          {side === "BUY" ? "Buy" : "Sell"}
         </button>
       )}
       </div>
@@ -609,7 +624,12 @@ export default function FoTradeModal({ open, onOpenChange, contract }: Props) {
                   Depth
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto bg-black p-4">{tradeForm}</div>
+              <div
+                className="flex-1 overflow-y-auto bg-black p-4"
+                style={{ paddingBottom: Math.max(12, viewportBottomInset) }}
+              >
+                {tradeForm}
+              </div>
             </div>
           </SheetContent>
         </Sheet>

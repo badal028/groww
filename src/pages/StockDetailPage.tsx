@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import StockLogo from '@/components/StockLogo';
 import { StockSearchDialog } from '@/components/StockSearch';
 import TopHeader from '@/components/TopHeader';
@@ -16,7 +16,6 @@ import { usePaperTrading } from '@/hooks/usePaperTrading';
 import { resolveKiteKeyForStock } from '@/services/marketData';
 import { useLiveStockDetail } from '@/hooks/useLiveStockDetail';
 import { toast } from 'sonner';
-import { showOrderExecutedToast, formatEquityOrderDescriptionLine } from '@/utils/tradingToasts';
 import FoOptionChainModal, { type FoContract } from '@/components/fo/FoOptionChainModal';
 import FoTradeModal from '@/components/fo/FoTradeModal';
 import EquityTradeBlock from '@/components/EquityTradeBlock';
@@ -32,6 +31,9 @@ const INNER_H = CHART_H - PAD * 2;
 const StockDetailPage: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [pinnedEquitySide, setPinnedEquitySide] = useState<'BUY' | 'SELL' | null>(null);
+  const prevStockIdRef = useRef<string | undefined>(undefined);
   const [activeRange, setActiveRange] = useState('1D');
   const [activeTab, setActiveTab] = useState('Overview');
   const { placeOrder, placing } = usePaperTrading();
@@ -39,6 +41,27 @@ const StockDetailPage: React.FC = () => {
   const [tradeOpen, setTradeOpen] = useState(false);
   const [selectedContract, setSelectedContract] = useState<FoContract | null>(null);
   const [stockSearchOpen, setStockSearchOpen] = useState(false);
+
+  useLayoutEffect(() => {
+    const p = new URLSearchParams(location.search);
+    const hasOC = p.get('openOptionChain') === '1';
+    const ord = p.get('orderSide');
+    const hasOrd = ord === 'BUY' || ord === 'SELL';
+    if (!hasOC && !hasOrd) return;
+    if (hasOC) setOptionChainOpen(true);
+    if (hasOrd) setPinnedEquitySide(ord);
+    p.delete('openOptionChain');
+    p.delete('orderSide');
+    const qs = p.toString();
+    navigate({ pathname: location.pathname, search: qs ? `?${qs}` : '' }, { replace: true });
+  }, [location.search, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (prevStockIdRef.current !== undefined && prevStockIdRef.current !== id) {
+      setPinnedEquitySide(null);
+    }
+    prevStockIdRef.current = id;
+  }, [id]);
 
   const baseStock = useMemo(() => {
     const indexStocks = marketIndices.map((idx) => ({
@@ -161,7 +184,6 @@ const StockDetailPage: React.FC = () => {
       toast.error(result.message || 'Order failed');
       return;
     }
-    showOrderExecutedToast(formatEquityOrderDescriptionLine(displayStock.symbol, quantity));
     // Navigate to Positions after a filled order
     navigate('/stocks?tab=Positions');
   };
@@ -306,6 +328,7 @@ const StockDetailPage: React.FC = () => {
             price={displayStock.price}
             placing={placing}
             onSubmit={handleEquityOrder}
+            initialOrderSide={pinnedEquitySide ?? undefined}
           />
         </div>
 
@@ -387,6 +410,7 @@ const StockDetailPage: React.FC = () => {
           price={displayStock.price}
           placing={placing}
           onSubmit={handleEquityOrder}
+          initialOrderSide={pinnedEquitySide ?? undefined}
         />
       </div>
 

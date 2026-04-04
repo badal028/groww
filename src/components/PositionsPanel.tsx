@@ -6,6 +6,7 @@ import {
   holdingsData,
   marketIndices,
   popularStocks,
+  type Stock,
 } from "@/data/mockData";
 import type { PaperPosition } from "@/hooks/usePaperPositions";
 import { usePositionMktPrices } from "@/hooks/usePositionMktPrices";
@@ -15,7 +16,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { PAPER_POSITIONS_REFRESH_EVENT } from "@/hooks/usePaperTrading";
 import { toast } from "sonner";
 import SwipeRevealExit from "@/components/SwipeRevealExit";
-import { formatFoOrderDescriptionLine, showPositionExitToast } from "@/utils/tradingToasts";
+import PositionActionSheet from "@/components/PositionActionSheet";
+import FoTradeModal from "@/components/fo/FoTradeModal";
+import FoOptionChainModal, { type FoContract } from "@/components/fo/FoOptionChainModal";
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
 
@@ -49,6 +52,51 @@ function productLine(p: PaperPosition): string {
   return String(p.instrumentType).toUpperCase() === "FO" ? "NRML · NFO" : "Delivery · NSE";
 }
 
+function positionToFoContract(p: PaperPosition, mkt: number): FoContract | null {
+  if (String(p.instrumentType).toUpperCase() !== "FO" || !p.expiry || p.strike == null || !p.optionType) {
+    return null;
+  }
+  const exp = String(p.expiry).slice(0, 10);
+  const d = new Date(`${exp}T00:00:00Z`);
+  const day = d.getUTCDate();
+  const mon = d.toLocaleString("en-IN", { month: "short", timeZone: "UTC" });
+  const opt = p.optionType === "CE" ? "Call" : "Put";
+  const label = `${p.symbol} ${day} ${mon} ${p.strike} ${opt}`;
+  return {
+    id: p.instrumentKey,
+    underlyingSymbol: p.symbol,
+    expiry: exp,
+    optionType: p.optionType,
+    strike: p.strike,
+    label,
+    tradingSymbol: p.kiteSymbol || p.instrumentKey,
+    kiteSymbol: p.kiteSymbol,
+    lastPrice: mkt,
+  };
+}
+
+function buildUnderlyingStock(p: PaperPosition, mkt: number): Stock | null {
+  const id = resolveStockIdFromPosition(p);
+  if (!id) return null;
+  const sym = normSym(p.symbol);
+  const idx = marketIndices.find((i) => normSym(i.name) === sym);
+  if (idx) {
+    return {
+      id: idx.name,
+      name: idx.name,
+      symbol: idx.name,
+      price: mkt,
+      change: idx.change,
+      changePercent: idx.changePercent,
+      sector: "Index",
+      exchange: idx.name === "SENSEX" ? "BSE" : "NSE",
+    };
+  }
+  const lists = [...popularStocks, ...holdingsData, ...etfStocks, ...additionalSearchStocks];
+  const eq = lists.find((s) => normSym(s.symbol) === sym);
+  return eq ? { ...eq, price: mkt } : null;
+}
+
 function formatPnl(n: number): string {
   const s = `${n >= 0 ? "+" : ""}₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return s;
@@ -67,6 +115,13 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
   const { token, refreshMe } = useAuth();
   const [exitingKey, setExitingKey] = useState<string | null>(null);
   const { mktByInstrumentKey } = usePositionMktPrices(positions);
+  const [sheetCtx, setSheetCtx] = useState<{ p: PaperPosition; mkt: number; pnl: number } | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [foTradeOpen, setFoTradeOpen] = useState(false);
+  const [foContract, setFoContract] = useState<FoContract | null>(null);
+  const [foOpenWithSide, setFoOpenWithSide] = useState<"BUY" | "SELL">("BUY");
+  const [ocOpen, setOcOpen] = useState(false);
+  const [ocStock, setOcStock] = useState<Stock | null>(null);
 
   const rows = useMemo(() => {
     return positions
@@ -119,12 +174,6 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
         if (!res.ok) throw new Error(data?.message || "Could not exit position");
         await refreshMe();
         window.dispatchEvent(new Event(PAPER_POSITIONS_REFRESH_EVENT));
-        const line = Number(data?.lineRealized ?? 0);
-        const detail =
-          p.instrumentType === "FO" && p.expiry && p.strike != null && p.optionType
-            ? formatFoOrderDescriptionLine(p.symbol, p.expiry, p.strike, p.optionType, p.quantity, "qty closed.")
-            : `${p.symbol} · ${Math.round(p.quantity)} / ${Math.round(p.quantity)} qty closed.`;
-        showPositionExitToast(detail, `Realized ${formatPnl(line)}`);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Exit failed");
       } finally {
@@ -145,8 +194,32 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
     });
   };
 
+  const closeSheet = () => setSheetOpen(false);
+
+  const openPositionSheet = (ctx: { p: PaperPosition; mkt: number; pnl: number }) => {
+    setSheetCtx(ctx);
+    setSheetOpen(true);
+  };
+
+  const openFoTradeFromSheet = (side: "BUY" | "SELL") => {
+    if (!sheetCtx) return;
+    const c = positionToFoContract(sheetCtx.p, sheetCtx.mkt);
+    if (!c) return;
+    setFoOpenWithSide(side);
+    setFoContract(c);
+    setFoTradeOpen(true);
+    closeSheet();
+  };
+
+  const goStockFromSheet = (query: string) => {
+    if (!sheetCtx) return;
+    const id = resolveStockIdFromPosition(sheetCtx.p);
+    closeSheet();
+    if (id) navigate(`/stock/${encodeURIComponent(id)}${query}`);
+  };
+
   const pnlCard = (
-    <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-4">
+    <div className="flex items-center justify-between gap-3 rounded-2xl border-0 bg-card px-4 py-4 dark:bg-[#232425]">
       <div className="min-w-0 flex-1">
         <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           Total P&amp;L
@@ -172,13 +245,7 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
     </div>
   );
 
-  if (loading) {
-    return (
-      <div className={cn("py-8 text-sm text-muted-foreground", className)}>Loading positions…</div>
-    );
-  }
-
-  if (positions.length === 0) {
+  if (!loading && positions.length === 0) {
     return (
       <div className={cn("py-8 text-sm text-muted-foreground", className)}>
         No positions yet. Place a trade to see them here.
@@ -186,15 +253,20 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
     );
   }
 
+  if (loading && positions.length === 0) {
+    return <div className={cn(className)} aria-busy="true" />;
+  }
+
   return (
+    <>
     <div className={cn("space-y-4", className)}>
       {pnlCard}
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-1">
+      <div className="flex items-center justify-between">
         <button
           type="button"
-          className="rounded-lg p-2 text-muted-foreground hover:bg-muted"
+          className="rounded-lg p-2 pl-0 text-muted-foreground hover:bg-muted"
           aria-label="Filter"
         >
           <ListFilter className="h-5 w-5" />
@@ -227,7 +299,7 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
       {/* List */}
       <div
         className={cn(
-          "overflow-hidden rounded-2xl border border-border bg-card",
+          "overflow-hidden rounded-2xl border-0 bg-card dark:bg-[#0F1012]",
           compact && "rounded-xl",
         )}
       >
@@ -289,17 +361,21 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
                 role="button"
                 tabIndex={0}
                 onClick={() => {
-                  if (!p.exited) openDetail(p);
+                  if (p.exited) return;
+                  if (compact) openPositionSheet({ p, mkt, pnl });
+                  else openDetail(p);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    if (!p.exited) openDetail(p);
+                    if (p.exited) return;
+                    if (compact) openPositionSheet({ p, mkt, pnl });
+                    else openDetail(p);
                   }
                 }}
                 className={cn(
-                  "flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors",
-                  p.exited ? "opacity-70" : "hover:bg-muted/40",
+                  "flex w-full flex-col gap-2 py-3 text-left",
+                  p.exited ? "opacity-70" : "",
                 )}
               >
                 {rowInner}
@@ -309,6 +385,76 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
         })}
       </div>
     </div>
+
+    <PositionActionSheet
+      open={sheetOpen}
+      onOpenChange={(o) => {
+        setSheetOpen(o);
+        if (!o) window.setTimeout(() => setSheetCtx(null), 320);
+      }}
+      position={sheetCtx?.p ?? null}
+      mkt={sheetCtx?.mkt ?? 0}
+      pnl={sheetCtx?.pnl ?? 0}
+      onChart={() => goStockFromSheet("")}
+      onOptionChain={() => {
+        if (!sheetCtx) return;
+        const st = buildUnderlyingStock(sheetCtx.p, sheetCtx.mkt);
+        closeSheet();
+        if (st) {
+          setOcStock(st);
+          setOcOpen(true);
+        }
+      }}
+      onPositionDetails={() => goStockFromSheet("")}
+      onSell={() => {
+        if (!sheetCtx) return;
+        if (positionToFoContract(sheetCtx.p, sheetCtx.mkt)) openFoTradeFromSheet("SELL");
+        else {
+          const id = resolveStockIdFromPosition(sheetCtx.p);
+          closeSheet();
+          if (id) navigate(`/stock/${encodeURIComponent(id)}?orderSide=SELL`);
+        }
+      }}
+      onBuy={() => {
+        if (!sheetCtx) return;
+        if (positionToFoContract(sheetCtx.p, sheetCtx.mkt)) openFoTradeFromSheet("BUY");
+        else {
+          const id = resolveStockIdFromPosition(sheetCtx.p);
+          closeSheet();
+          if (id) navigate(`/stock/${encodeURIComponent(id)}?orderSide=BUY`);
+        }
+      }}
+    />
+
+    <FoTradeModal
+      open={foTradeOpen}
+      onOpenChange={(o) => {
+        setFoTradeOpen(o);
+        if (!o) setFoContract(null);
+      }}
+      contract={foContract}
+      openWithSide={foOpenWithSide}
+    />
+
+    {ocStock ? (
+      <FoOptionChainModal
+        open={ocOpen}
+        onOpenChange={(o) => {
+          setOcOpen(o);
+          if (!o) setOcStock(null);
+        }}
+        underlying={ocStock}
+        expiryLabel="—"
+        onSelect={(contract) => {
+          setFoContract(contract);
+          setFoOpenWithSide("BUY");
+          setFoTradeOpen(true);
+          setOcOpen(false);
+          setOcStock(null);
+        }}
+      />
+    ) : null}
+    </>
   );
 };
 
