@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -22,6 +22,8 @@ import PaperTradingLeaguePage from "./pages/seo/PaperTradingLeaguePage";
 import StockTradingContestPage from "./pages/seo/StockTradingContestPage";
 import FantasyStyleStockLeaguePage from "./pages/seo/FantasyStyleStockLeaguePage";
 import AboutGrowwTraderPage from "./pages/seo/AboutGrowwTraderPage";
+import AboutOptixPage from "./pages/seo/AboutOptixPage";
+import PressPage from "./pages/seo/PressPage";
 import VipMembershipPage from "./pages/VipMembershipPage";
 
 const queryClient = new QueryClient();
@@ -82,6 +84,9 @@ const App = () => (
               <Route path="/learn/stock-trading-contest-india" element={<StockTradingContestPage />} />
               <Route path="/learn/fantasy-style-stock-league" element={<FantasyStyleStockLeaguePage />} />
               <Route path="/about/growwtrader" element={<AboutGrowwTraderPage />} />
+              <Route path="/about-optix" element={<AboutOptixPage />} />
+              <Route path="/press" element={<PressPage />} />
+              <Route path="/media" element={<Navigate to="/press" replace />} />
               <Route path="/vip-membership" element={<VipMembershipPage />} />
               <Route path="/*" element={<AppLayout />} />
             </Routes>

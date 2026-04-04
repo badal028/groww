@@ -14,7 +14,9 @@ export type FoContract = {
   strike: number;
   label: string; // e.g. "SENSEX 19 Mar 73400 Call"
   tradingSymbol: string;
+  kiteSymbol?: string;
   lastPrice: number;
+  netChange?: number | null;
   /** Exchange lot (qty step); default 25 in trade UI if omitted */
   lotSize?: number;
 };
@@ -118,6 +120,7 @@ export default function FoOptionChainModal({
                 tradingSymbol: r.CE.tradingSymbol,
                 kiteSymbol: String(r.CE.kiteSymbol || ""),
                 lastPrice: Number(r.CE.lastPrice ?? 0),
+                netChange: Number.isFinite(Number(r.CE.netChange)) ? Number(r.CE.netChange) : null,
               }
             : null,
           PE: r.PE
@@ -131,6 +134,7 @@ export default function FoOptionChainModal({
                 tradingSymbol: r.PE.tradingSymbol,
                 kiteSymbol: String(r.PE.kiteSymbol || ""),
                 lastPrice: Number(r.PE.lastPrice ?? 0),
+                netChange: Number.isFinite(Number(r.PE.netChange)) ? Number(r.PE.netChange) : null,
               }
             : null,
         }));

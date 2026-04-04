@@ -266,7 +266,15 @@ const StocksPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
+              <nav className="hidden items-center gap-4 text-xs font-medium text-muted-foreground lg:flex" aria-label="Brand links">
+                <button type="button" onClick={() => navigate('/about-optix')} className="hover:text-foreground">
+                  About Optix
+                </button>
+                <button type="button" onClick={() => navigate('/press')} className="hover:text-foreground">
+                  Press
+                </button>
+              </nav>
               <button
                 type="button"
                 onClick={() => setStockSearchOpen(true)}

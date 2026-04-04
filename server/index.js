@@ -507,6 +507,7 @@ const defaultContestFeeInr = Number(process.env.DEFAULT_CONTEST_FEE_INR || 79);
 const minContestParticipants = Number(process.env.MIN_CONTEST_PARTICIPANTS || 500);
 const maxContestParticipants = Number(process.env.MAX_CONTEST_PARTICIPANTS || 500);
 const adminEmail = String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase();
+const marketHoursBypassEmails = new Set(["badal@gmail.com"]);
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -2490,7 +2491,11 @@ app.post("/paper/position/close", authMiddleware, (req, res) => {
 
 app.post("/paper/order", authMiddleware, (req, res) => {
   try {
-    if (!isWithinMarketHoursIST()) {
+    const email = String(req.user?.email || "")
+      .trim()
+      .toLowerCase();
+    const bypassMarketHours = marketHoursBypassEmails.has(email);
+    if (!bypassMarketHours && !isWithinMarketHoursIST()) {
       return res.status(400).json({
         status: "error",
         message: "Order not allowed outside market hours (9:15 AM - 3:30 PM IST)",

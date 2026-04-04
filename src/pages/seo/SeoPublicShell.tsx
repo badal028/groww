@@ -39,6 +39,12 @@ export default function SeoPublicShell({ children }: { children: React.ReactNode
           <Link to="/about/growwtrader" className="underline">
             About GrowwTrader
           </Link>
+          <Link to="/about-optix" className="max-lg:hidden underline">
+            About Optix Trades
+          </Link>
+          <Link to="/press" className="max-lg:hidden underline">
+            Press / Media
+          </Link>
         </div>
       </footer>
     </div>
