@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import GrowwLogo from '@/components/GrowwLogo';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { isAdminEmail } from '@/lib/accountLabels';
+import { isAdminEmail, isSignupAllowedEmail } from '@/lib/accountLabels';
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || 'http://127.0.0.1:3001';
 
@@ -29,6 +29,8 @@ const LoginPage: React.FC = () => {
       invalid_state: 'Sign-in expired. Please try again.',
       oauth_not_configured: 'Google sign-in is not configured on the server.',
       access_denied: 'Google sign-in was cancelled.',
+      signup_closed:
+        'New Google accounts are not open for this email. Use Login if you already have an account, or an authorized test email.',
     };
     setError(map[err] ?? `Error: ${err}`);
     window.history.replaceState(null, '', window.location.pathname);
@@ -58,6 +60,10 @@ const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (mode === 'signup' && !isSignupAllowedEmail(email)) {
+      setError('Registration is closed.');
+      return;
+    }
     setSubmitting(true);
     const result =
       mode === 'login'
@@ -96,7 +102,7 @@ const LoginPage: React.FC = () => {
         <p className="mb-6 text-sm text-muted-foreground">
           {mode === 'login'
             ? 'Login to continue earning'
-            : 'Get ₹1,00,00,000 virtual balance on signup'}
+            : 'New sign-ups are limited to authorized test accounts. Existing users: use Login.'}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-3">

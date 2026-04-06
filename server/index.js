@@ -578,6 +578,11 @@ const defaultContestFeeInr = Number(process.env.DEFAULT_CONTEST_FEE_INR || 79);
 const minContestParticipants = Number(process.env.MIN_CONTEST_PARTICIPANTS || 500);
 const maxContestParticipants = Number(process.env.MAX_CONTEST_PARTICIPANTS || 500);
 const adminEmail = String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase();
+
+/** Email/password + Google OAuth: new accounts only for these (everyone else can still log in). */
+const SIGNUP_ALLOWED_EMAILS = new Set(
+  ["badal@gmail.com", "badal1@gmail.com", "pbadal392@gmail.com"].map((e) => e.trim().toLowerCase()),
+);
 const marketHoursBypassEmails = new Set(["badal@gmail.com"]);
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
@@ -922,11 +927,18 @@ app.post("/auth/signup", async (req, res) => {
       return res.status(400).json({ status: "error", message: "Password should be at least 6 characters" });
     }
 
+    const emailNorm = String(email).trim().toLowerCase();
+    if (!SIGNUP_ALLOWED_EMAILS.has(emailNorm)) {
+      return res.status(403).json({
+        status: "error",
+        message: "Registration is closed. Only authorized test accounts can sign up.",
+      });
+    }
+
     const existing = getUserByEmail(email);
     if (existing) return res.status(409).json({ status: "error", message: "Email already registered" });
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const emailNorm = String(email).trim().toLowerCase();
     const user = createUser({
       id: randomUUID(),
       name: String(name).trim(),
@@ -1070,6 +1082,9 @@ app.get("/auth/google/callback", async (req, res) => {
 
     let user = getUserByEmail(email);
     if (!user) {
+      if (!SIGNUP_ALLOWED_EMAILS.has(email)) {
+        return res.redirect(`${frontendOrigin}/login?error=signup_closed`);
+      }
       const passwordHash = await bcrypt.hash(randomUUID() + sub + jwtSecret, 10);
       user = createUser({
         id: randomUUID(),
@@ -1549,138 +1564,37 @@ app.patch("/auth/profile", authMiddleware, (req, res) => {
   });
 });
 
+/** Pro League / live leaderboard disabled (no Kite batching, no getAllUsers scan). Admin contest routes unchanged. */
 app.get("/contest/current", authMiddleware, (req, res) => {
-  const contest = currentContestOrCreate();
-  const capped = augmentContestForApi(contest);
-  const practiceContest = currentPracticeContestForApi();
-  const uid = req.user.id;
-  const joined = (capped?.participants || []).some((p) => p.userId === uid);
   return res.json({
     status: "ok",
-    contest: capped,
-    prizeContest: capped,
-    practiceContest,
-    joined,
-    joinedPrize: joined,
-    joinedPractice: true,
+    contest: null,
+    prizeContest: null,
+    practiceContest: null,
+    joined: false,
+    joinedPrize: false,
+    joinedPractice: false,
     realWalletInr: Number(req.user.realWalletInr || 0),
   });
 });
 
-app.post("/contest/join", authMiddleware, (req, res) => {
-  if (!isLeaderboardParticipantUser(req.user)) {
-    return res.status(400).json({ status: "error", message: "User is removed from leaderboard participation" });
-  }
-  const contest = currentContestOrCreate();
-  if (contest.status !== "OPEN") {
-    return res.status(400).json({ status: "error", message: "Contest is not open" });
-  }
-  const already = Array.isArray(contest.participants) && contest.participants.some((p) => p.userId === req.user.id);
-  if (already) return res.json({ status: "ok", contest: augmentContestForApi(contest), joined: true });
-  if ((contest.participants?.length || 0) >= Number(contest.maxParticipants || maxContestParticipants)) {
-    return res.status(400).json({ status: "error", message: "Contest is full" });
-  }
-  const fee = Number(getContestOfferState(contest).effectiveEntryFeeInr || contest.entryFeeInr || defaultContestFeeInr);
-  const currentReal = Number(req.user.realWalletInr || 0);
-  if (currentReal < fee) {
-    return res.status(400).json({ status: "error", message: "Insufficient real balance" });
-  }
-  const updatedUser = updateUser(req.user.id, (prev) => ({
-    ...prev,
-    realWalletInr: Number((Number(prev.realWalletInr || 0) - fee).toFixed(2)),
-    updatedAt: new Date().toISOString(),
-  }));
-  if (!updatedUser) return res.status(404).json({ status: "error", message: "User not found" });
-  const updatedContest = upsertContest(contest.id, (prev) => {
-    const maxCap = Number(prev?.maxParticipants || maxContestParticipants);
-    const prevParticipants = Array.isArray(prev?.participants) ? prev.participants : [];
-    if (prevParticipants.length >= maxCap) return { ...prev, updatedAt: new Date().toISOString() };
-    return {
-      ...prev,
-      participants: [...prevParticipants, { userId: req.user.id, joinedAt: new Date().toISOString() }].slice(0, maxCap),
-      updatedAt: new Date().toISOString(),
-    };
-  });
-  return res.json({
-    status: "ok",
-    contest: augmentContestForApi(updatedContest),
-    realWalletInr: Number(updatedUser.realWalletInr || 0),
-  });
+app.post("/contest/join", authMiddleware, (_req, res) => {
+  return res.status(403).json({ status: "error", message: "Pro League is disabled." });
 });
 
-app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
-  const contest = currentContestOrCreate();
-  const cappedContest = augmentContestForApi(contest);
-  const practiceContest = currentPracticeContestForApi();
-  // Prize session rolls at 3:30 PM IST; practice leaderboard should reset at 12:00 AM IST.
-  const prizeDayISO = activeContestDateISO();
-  const practiceDayISO = todayISOInIST();
-  const participants = cappedContest?.participants || [];
-  const minParticipants = Math.max(1, Number(contest.minParticipants || minContestParticipants));
-  const contestStarted = participants.length >= minParticipants;
-  const joinedAtByUserId = new Map(
-    participants.map((p) => [String(p.userId), String(p.joinedAt || "")]),
-  );
-  const users = getAllUsers().filter((u) => participants.some((p) => p.userId === u.id) && isLeaderboardParticipantUser(u));
-  const practiceUsers = getAllUsers().filter((u) => isLeaderboardParticipantUser(u));
-
-  // If not started, keep leaderboard stable + non-winner (no P&L).
-  if (!contestStarted) {
-    const ordered = [...users].sort((a, b) => {
-      const aa = joinedAtByUserId.get(a.id) || "";
-      const bb = joinedAtByUserId.get(b.id) || "";
-      const da = Number.isFinite(Date.parse(aa)) ? Date.parse(aa) : 0;
-      const db = Number.isFinite(Date.parse(bb)) ? Date.parse(bb) : 0;
-      return da - db;
-    });
-    const leaderboard = ordered.map((u, idx) => ({
-      userId: u.id,
-      name: u.name,
-      email: u.email,
-      avatarUrl: u.avatarUrl || null,
-      totalPnlInr: 0,
-      rank: null,
-    }));
-    const practiceSyms = collectQuoteSymbolsForDay(practiceUsers, practiceDayISO);
-    const practiceQuotes = await fetchKiteQuotesCached(practiceSyms);
-    const practiceLeaderboard = dailyContestLeaderboardForUsers(practiceUsers, practiceDayISO, practiceQuotes);
-    const me = leaderboard.find((x) => x.userId === req.user.id) || null;
-    const mePractice = practiceLeaderboard.find((x) => x.userId === req.user.id) || null;
-    return res.json({
-      status: "ok",
-      contest: cappedContest,
-      prizeContest: cappedContest,
-      practiceContest,
-      leaderboard,
-      prizeLeaderboard: leaderboard,
-      practiceLeaderboard,
-      myRank: null,
-      myPrizeRank: null,
-      myPracticeRank: mePractice?.rank || null,
-      participantCount: participants.length,
-    });
-  }
-
-  const prizeSyms = collectQuoteSymbolsForDay(users, prizeDayISO);
-  const practiceSyms = collectQuoteSymbolsForDay(practiceUsers, practiceDayISO);
-  const mergedSyms = [...new Set([...prizeSyms, ...practiceSyms])];
-  const quotes = await fetchKiteQuotesCached(mergedSyms);
-  const leaderboard = dailyContestLeaderboardForUsers(users, prizeDayISO, quotes);
-  const practiceLeaderboard = dailyContestLeaderboardForUsers(practiceUsers, practiceDayISO, quotes);
-  const me = leaderboard.find((x) => x.userId === req.user.id) || null;
-  const mePractice = practiceLeaderboard.find((x) => x.userId === req.user.id) || null;
+app.get("/contest/leaderboard", authMiddleware, (req, res) => {
   return res.json({
     status: "ok",
-    contest: cappedContest,
-    prizeContest: cappedContest,
-    practiceContest,
-    leaderboard,
-    prizeLeaderboard: leaderboard,
-    practiceLeaderboard,
-    myRank: me?.rank || null,
-    myPrizeRank: me?.rank || null,
-    myPracticeRank: mePractice?.rank || null,
-    participantCount: participants.length,
+    contest: null,
+    prizeContest: null,
+    practiceContest: null,
+    leaderboard: [],
+    prizeLeaderboard: [],
+    practiceLeaderboard: [],
+    myRank: null,
+    myPrizeRank: null,
+    myPracticeRank: null,
+    participantCount: 0,
   });
 });
 
