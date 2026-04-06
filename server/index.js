@@ -503,7 +503,28 @@ if (process.env.TRUST_PROXY === "1") {
   app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS) || 1);
 }
 const port = Number(process.env.PORT || 3001);
-const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:8080";
+
+/** Trim + strip trailing slashes so https://app.com and https://app.com/ match. */
+const normalizeOriginUrl = (s) => {
+  const t = String(s || "").trim();
+  if (!t) return null;
+  return t.replace(/\/+$/, "");
+};
+
+const splitOriginsEnv = (raw) =>
+  String(raw || "")
+    .split(",")
+    .map(normalizeOriginUrl)
+    .filter(Boolean);
+
+/** Exact browser Origins allowed for CORS (plus localhost / 127.0.0.1 patterns below). */
+const corsAllowedExact = new Set([
+  ...splitOriginsEnv(process.env.FRONTEND_ORIGIN || "http://localhost:8080"),
+  ...splitOriginsEnv(process.env.ADDITIONAL_CORS_ORIGINS || ""),
+]);
+
+/** Canonical site URL for OAuth redirects and links (first entry wins). */
+const frontendOrigin = [...corsAllowedExact][0] || "http://localhost:8080";
 const jwtSecret = process.env.JWT_SECRET || "dev-insecure-secret-change-this";
 const defaultWalletBalance = Number(process.env.DEFAULT_VIRTUAL_BALANCE_INR || 10_000_000);
 /** 10 crore virtual paper wallet for specific demo accounts (INR). */
@@ -737,13 +758,19 @@ try {
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow non-browser tools (curl/postman) and local dev origins.
+      // No Origin: same-origin, curl, server-to-server — allow.
       if (!origin) return callback(null, true);
-      const allowed =
-        origin === frontendOrigin ||
-        /^http:\/\/localhost:\d+$/.test(origin) ||
-        /^http:\/\/127\.0\.0\.1:\d+$/.test(origin);
-      return callback(allowed ? null : new Error("Not allowed by CORS"), allowed);
+      const norm = normalizeOriginUrl(origin);
+      if (norm && corsAllowedExact.has(norm)) return callback(null, true);
+      // Local dev: any port on localhost / 127.0.0.1 (http or https).
+      if (
+        /^https?:\/\/localhost:\d+$/.test(origin) ||
+        /^https?:\/\/127\.0\.0\.1:\d+$/.test(origin)
+      ) {
+        return callback(null, true);
+      }
+      // Reject without throwing — avoids PM2 error.log spam from bots / wrong deploy URLs.
+      return callback(null, false);
     },
     credentials: true,
   }),
