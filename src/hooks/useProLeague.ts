@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
@@ -57,6 +57,8 @@ export function useProLeague() {
   const [loading, setLoading] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Avoid stacking requests when /contest/leaderboard is slower than the poll interval. */
+  const loadInFlightRef = useRef(false);
 
   const headers = useMemo(
     () => ({
@@ -66,7 +68,7 @@ export function useProLeague() {
     [token],
   );
 
-  const load = useCallback(async (silent = false) => {
+  const load = useCallback(async (silent = false, opts?: { allowParallel?: boolean }) => {
     if (!token) {
       setContest(null);
       setLeaderboard([]);
@@ -80,6 +82,9 @@ export function useProLeague() {
       setMyPracticeRank(null);
       return;
     }
+    // Only the 20s poller may skip when a request is still in flight; joins/refetch must run.
+    if (silent && !opts?.allowParallel && loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
     if (!silent) setLoading(true);
     setError(null);
     try {
@@ -112,6 +117,7 @@ export function useProLeague() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load Pro-League");
     } finally {
+      loadInFlightRef.current = false;
       if (!silent) setLoading(false);
     }
   }, [token, headers]);
@@ -127,7 +133,7 @@ export function useProLeague() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return { ok: false, message: data?.message || "Could not join contest" };
       await refreshMe();
-      await load(true);
+      await load(true, { allowParallel: true });
       return { ok: true };
     } catch {
       return { ok: false, message: "Unable to connect backend" };
@@ -142,9 +148,10 @@ export function useProLeague() {
 
   useEffect(() => {
     if (!token) return;
+    // Leaderboard uses live Kite quotes server-side; 5s × many tabs overloads the backend.
     const timer = window.setInterval(() => {
-      void load(true);
-    }, 5000);
+      void load(true); // silent: skips if previous poll still pending
+    }, 20_000);
     return () => window.clearInterval(timer);
   }, [token, load]);
 

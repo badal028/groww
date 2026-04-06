@@ -210,15 +210,53 @@ const collectQuoteSymbolsForDay = (users, dayISO) => {
   return [...new Set(symbols)];
 };
 
+/** Kite batch limit — split to avoid slow/hanging quote calls. */
+const KITE_QUOTE_CHUNK = 400;
+const KITE_QUOTE_CACHE_MS = 12_000;
+let kiteQuoteCache = { key: "", at: 0, data: {} };
+const kiteQuoteInflight = new Map();
+
+/**
+ * Single Kite round-trip (or chunked) with short TTL cache + in-flight dedupe.
+ * Cuts load when many clients poll /contest/leaderboard at once.
+ */
+const fetchKiteQuotesCached = async (symbols) => {
+  if (!Array.isArray(symbols) || !symbols.length || !auth.accessToken) return {};
+  const unique = [...new Set(symbols.map((s) => String(s).trim()).filter(Boolean))];
+  if (!unique.length) return {};
+  unique.sort();
+  const cacheKey = unique.join("\u0001");
+  const now = Date.now();
+  if (kiteQuoteCache.key === cacheKey && now - kiteQuoteCache.at < KITE_QUOTE_CACHE_MS) {
+    return kiteQuoteCache.data;
+  }
+  const pending = kiteQuoteInflight.get(cacheKey);
+  if (pending) return pending;
+
+  const p = (async () => {
+    try {
+      kite.setAccessToken(auth.accessToken);
+      const merged = {};
+      for (let i = 0; i < unique.length; i += KITE_QUOTE_CHUNK) {
+        const chunk = unique.slice(i, i + KITE_QUOTE_CHUNK);
+        const part = await kite.getQuote(chunk);
+        if (part && typeof part === "object") Object.assign(merged, part);
+      }
+      kiteQuoteCache = { key: cacheKey, at: Date.now(), data: merged };
+      return merged;
+    } catch {
+      return {};
+    } finally {
+      kiteQuoteInflight.delete(cacheKey);
+    }
+  })();
+  kiteQuoteInflight.set(cacheKey, p);
+  return p;
+};
+
 const getQuotesForUsersDay = async (users, dayISO) => {
   const symbols = collectQuoteSymbolsForDay(users, dayISO);
-  if (!symbols.length || !auth.accessToken) return {};
-  try {
-    kite.setAccessToken(auth.accessToken);
-    return await kite.getQuote(symbols);
-  } catch {
-    return {};
-  }
+  return fetchKiteQuotesCached(symbols);
 };
 
 const dailyContestLeaderboardForUsers = (users, dayISO, quotes) => {
@@ -1603,7 +1641,8 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
       totalPnlInr: 0,
       rank: null,
     }));
-    const practiceQuotes = await getQuotesForUsersDay(practiceUsers, practiceDayISO);
+    const practiceSyms = collectQuoteSymbolsForDay(practiceUsers, practiceDayISO);
+    const practiceQuotes = await fetchKiteQuotesCached(practiceSyms);
     const practiceLeaderboard = dailyContestLeaderboardForUsers(practiceUsers, practiceDayISO, practiceQuotes);
     const me = leaderboard.find((x) => x.userId === req.user.id) || null;
     const mePractice = practiceLeaderboard.find((x) => x.userId === req.user.id) || null;
@@ -1622,10 +1661,12 @@ app.get("/contest/leaderboard", authMiddleware, async (req, res) => {
     });
   }
 
-  const prizeQuotes = await getQuotesForUsersDay(users, prizeDayISO);
-  const practiceQuotes = await getQuotesForUsersDay(practiceUsers, practiceDayISO);
-  const leaderboard = dailyContestLeaderboardForUsers(users, prizeDayISO, prizeQuotes);
-  const practiceLeaderboard = dailyContestLeaderboardForUsers(practiceUsers, practiceDayISO, practiceQuotes);
+  const prizeSyms = collectQuoteSymbolsForDay(users, prizeDayISO);
+  const practiceSyms = collectQuoteSymbolsForDay(practiceUsers, practiceDayISO);
+  const mergedSyms = [...new Set([...prizeSyms, ...practiceSyms])];
+  const quotes = await fetchKiteQuotesCached(mergedSyms);
+  const leaderboard = dailyContestLeaderboardForUsers(users, prizeDayISO, quotes);
+  const practiceLeaderboard = dailyContestLeaderboardForUsers(practiceUsers, practiceDayISO, quotes);
   const me = leaderboard.find((x) => x.userId === req.user.id) || null;
   const mePractice = practiceLeaderboard.find((x) => x.userId === req.user.id) || null;
   return res.json({
@@ -1877,9 +1918,11 @@ app.get("/admin/contest/winners", authMiddleware, ensureAdmin, async (req, res) 
   const prizeUsers = participants
     .map((p) => userById.get(String(p.userId)))
     .filter(Boolean);
-  const prizeQuotes = await getQuotesForUsersDay(prizeUsers, prizeDayISO);
-  const practiceQuotes = await getQuotesForUsersDay(users, practiceDayISO);
-  const computedPrize = dailyContestLeaderboardForUsers(prizeUsers, prizeDayISO, prizeQuotes).slice(0, 3);
+  const prizeSyms = collectQuoteSymbolsForDay(prizeUsers, prizeDayISO);
+  const practiceSyms = collectQuoteSymbolsForDay(users, practiceDayISO);
+  const adminMergedSyms = [...new Set([...prizeSyms, ...practiceSyms])];
+  const adminQuotes = await fetchKiteQuotesCached(adminMergedSyms);
+  const computedPrize = dailyContestLeaderboardForUsers(prizeUsers, prizeDayISO, adminQuotes).slice(0, 3);
   const computedPrizeByUserId = new Map(computedPrize.map((r) => [r.userId, r]));
   const prizeTop3 =
     contest?.status === "FINALIZED" && Array.isArray(contest?.payouts) && contest.payouts.length
@@ -1901,7 +1944,7 @@ app.get("/admin/contest/winners", authMiddleware, ensureAdmin, async (req, res) 
           })
       : computedPrize.map((r) => ({ ...r, amountInr: 0, payoutStatus: contest?.status === "FINALIZED" ? "PENDING" : "NOT_FINALIZED" }));
 
-  const practiceTop3 = dailyContestLeaderboardForUsers(users, practiceDayISO, practiceQuotes).slice(0, 3).map((r) => ({
+  const practiceTop3 = dailyContestLeaderboardForUsers(users, practiceDayISO, adminQuotes).slice(0, 3).map((r) => ({
     ...r,
     amountInr: 0,
     payoutStatus: "PRACTICE",
