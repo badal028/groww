@@ -439,7 +439,7 @@ export default function FoTradeModal({ open, onOpenChange, contract, openWithSid
             <Settings className="h-3.5 w-3.5" />
           </button>
         </div>
-        <div className="relative rounded-md border border-border bg-card px-1.5 py-1 text-[11px] text-foreground whitespace-nowrap">
+        <div className="relative rounded-md border border-border bg-[#eef1f6] px-1.5 py-1 text-[11px] text-foreground whitespace-nowrap dark:bg-white dark:text-black">
           {quickQtyValues.map((v, idx) => (
             <button
               key={`chip-${v}`}
@@ -451,7 +451,7 @@ export default function FoTradeModal({ open, onOpenChange, contract, openWithSid
               {v}
             </button>
           ))}
-          <span className="absolute -bottom-1.5 left-1/2 h-0 w-0 -translate-x-1/2 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-card" />
+          <span className="absolute -bottom-1.5 left-1/2 h-0 w-0 -translate-x-1/2 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-[#eef1f6] dark:border-t-white" />
         </div>
       </div>
 
@@ -489,10 +489,10 @@ export default function FoTradeModal({ open, onOpenChange, contract, openWithSid
             </button>
           </div>
           {side === "SELL" && openPositionForContract && openQtyRounded > 0 ? (
-            <div className="flex w-full items-center justify-end gap-1 pl-0.5 pr-0.5 text-[11px] leading-tight sm:text-xs">
+            <div className="mt-1 flex w-full items-center justify-end gap-1 pl-0.5 pr-0.5 text-[11px] leading-tight sm:text-xs">
               <button
                 type="button"
-                className="inline-flex items-center gap-0.5 rounded-full  px-2 py-0.5 text-[10px] font-medium text-[#5c5f8a] dark:bg-[#131D36] dark:text-[#9DA0D6]"
+                className="px-0 py-0 text-[10px] font-medium text-[#9DA0D6]"
                 onClick={() => setQtyInput(String(openQtyRounded))}
                 title="Fill quantity with your open position size"
               >
