@@ -4,7 +4,8 @@ import { ArrowLeft, Settings, Wallet, Package, User, Building2, Share2, Headphon
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { canControlVirtualWallet } from '@/lib/demoAccounts';
+import { canClearPaperPositions, canControlVirtualWallet } from '@/lib/demoAccounts';
+import { PAPER_POSITIONS_REFRESH_EVENT } from '@/hooks/usePaperTrading';
 
 const menuItems = [
   { icon: Wallet, label: '$0.00', sublabel: 'Stocks, F&O balance', action: 'Virtual balance' },
@@ -63,6 +64,8 @@ const ProfilePage: React.FC = () => {
   const [setBalanceInput, setSetBalanceInput] = useState('');
   const [addBalanceInput, setAddBalanceInput] = useState('');
   const [virtualSaving, setVirtualSaving] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const [clearingPositions, setClearingPositions] = useState(false);
   const location = useLocation();
   const isCashfreeReturn = location.search.includes("cashfreeOrderId=");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -74,6 +77,7 @@ const ProfilePage: React.FC = () => {
   const walletLabel = `₹${Number(user?.walletInr ?? 0).toLocaleString('en-IN')}`;
   const realWalletLabel = `₹${Number(user?.realWalletInr ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const showVirtualWalletTools = canControlVirtualWallet(user?.email);
+  const showReportsPositionReset = canClearPaperPositions(user?.email);
 
   const userMenuItems = menuItems.map((item, index) => {
     if (item.icon !== Wallet) return item;
@@ -144,6 +148,30 @@ const ProfilePage: React.FC = () => {
       toast.error(e instanceof Error ? e.message : 'Update failed');
     } finally {
       setVirtualSaving(false);
+    }
+  };
+
+  const clearAllPaperPositions = async () => {
+    if (!token) {
+      toast.error('Login required');
+      return;
+    }
+    setClearingPositions(true);
+    try {
+      const r = await fetch(`${apiBase}/paper/positions/clear`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d?.message || 'Could not clear positions');
+      window.dispatchEvent(new Event(PAPER_POSITIONS_REFRESH_EVENT));
+      await refreshMe();
+      toast.success('All paper positions cleared');
+      setReportsOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Clear failed');
+    } finally {
+      setClearingPositions(false);
     }
   };
 
@@ -315,6 +343,7 @@ const ProfilePage: React.FC = () => {
                   setAddBalanceInput('');
                   setVirtualWalletOpen(true);
                 }
+                if (i === 7) setReportsOpen(true);
               }}
               className="flex w-full items-center justify-between border-b border-border py-4 text-left hover:bg-muted/50 transition-colors rounded px-2 -mx-2"
             >
@@ -388,6 +417,31 @@ const ProfilePage: React.FC = () => {
           >
             Add amount
           </button>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
+        <DialogContent className="max-w-sm px-5 sm:px-6">
+          <h3 className="text-base font-semibold text-foreground">Reports</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Exited positions from previous days are still removed automatically at midnight IST. Open a report export when available.
+          </p>
+          {showReportsPositionReset ? (
+            <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs font-medium text-foreground">Test account tools</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Remove every paper position (open and exited) from this account immediately. Does not change wallet balance or orders history.
+              </p>
+              <button
+                type="button"
+                className="mt-3 w-full rounded-md border border-loss/40 bg-loss/10 py-2 text-sm font-semibold text-loss hover:bg-loss/15 disabled:opacity-60"
+                onClick={() => void clearAllPaperPositions()}
+                disabled={clearingPositions}
+              >
+                {clearingPositions ? 'Clearing…' : 'Clear all positions'}
+              </button>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 

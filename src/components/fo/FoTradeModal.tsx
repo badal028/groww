@@ -68,18 +68,27 @@ export default function FoTradeModal({ open, onOpenChange, contract, openWithSid
   placeOrderRef.current = placeOrder;
 
   const lotSize = useMemo(() => defaultFoLotSize(contract), [contract]);
-  const hasOpenPositionForContract = useMemo(() => {
-    if (!contract) return false;
-    return positions.some((p) => {
-      if (p.exited) return false;
-      if (Number(p.quantity || 0) <= 0) return false;
+  /** Open leg for this contract (for sell: tap qty to fill, show avg). */
+  const openPositionForContract = useMemo(() => {
+    if (!contract) return null;
+    for (const p of positions) {
+      if (p.exited) continue;
+      if (Number(p.quantity || 0) <= 0) continue;
       const sameSymbol = String(p.symbol || "").toUpperCase() === String(contract.underlyingSymbol || "").toUpperCase();
       const sameType = String(p.optionType || "") === String(contract.optionType || "");
       const sameStrike = Number(p.strike || 0) === Number(contract.strike || 0);
       const sameExpiry = String(p.expiry || "").slice(0, 10) === String(contract.expiry || "").slice(0, 10);
-      return sameSymbol && sameType && sameStrike && sameExpiry;
-    });
+      if (sameSymbol && sameType && sameStrike && sameExpiry) return p;
+    }
+    return null;
   }, [positions, contract]);
+
+  const hasOpenPositionForContract = Boolean(openPositionForContract);
+
+  const openQtyRounded = openPositionForContract ? Math.round(Number(openPositionForContract.quantity || 0)) : 0;
+  const openAvgPx = openPositionForContract ? Number(openPositionForContract.avgPrice || 0) : 0;
+
+  const qtyInputWidthCh = Math.min(24, Math.max(3, (qtyInput.length || 1) + 1.25));
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -411,85 +420,101 @@ export default function FoTradeModal({ open, onOpenChange, contract, openWithSid
   ]);
 
   const tradeForm = (
-    <div className="flex min-h-full flex-col bg-zinc-100 text-zinc-950 dark:bg-black dark:text-white">
+    <div className="flex min-h-full flex-col bg-background text-foreground">
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="rounded-full border border-zinc-400 bg-transparent px-4 py-1.5 text-xs font-medium text-zinc-900 dark:border-white dark:text-white"
+            className="rounded-full border border-border bg-transparent px-4 py-1.5 text-xs font-medium text-foreground"
           >
             Delivery
           </button>
           <button
             type="button"
-            className="rounded-full border border-zinc-300 bg-transparent px-4 py-1.5 text-xs font-medium text-zinc-700 dark:border-white/30 dark:text-white/90"
+            className="rounded-full border border-border bg-transparent px-4 py-1.5 text-xs font-medium text-muted-foreground"
           >
             Intraday
           </button>
-          <button
-            type="button"
-            className="rounded-full border border-zinc-300 p-2 text-zinc-700 dark:border-white/20 dark:text-white/90"
-          >
+          <button type="button" className="rounded-full border border-border p-2 text-muted-foreground">
             <Settings className="h-3.5 w-3.5" />
           </button>
         </div>
-        <div className="relative rounded-md border border-border bg-white px-1.5 py-1 text-[11px] text-black whitespace-nowrap dark:border-border">
+        <div className="relative rounded-md border border-border bg-card px-1.5 py-1 text-[11px] text-foreground whitespace-nowrap">
           {quickQtyValues.map((v, idx) => (
             <button
               key={`chip-${v}`}
               type="button"
-              className={cn("px-2 whitespace-nowrap", idx < quickQtyValues.length - 1 && "border-r border-black/20")}
+              className={cn("px-2 whitespace-nowrap", idx < quickQtyValues.length - 1 && "border-r border-border")}
               onClick={() => setQtyInput(String(v))}
               disabled={placing}
             >
               {v}
             </button>
           ))}
-          <span className="absolute -bottom-1.5 left-1/2 h-0 w-0 -translate-x-1/2 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-white" />
+          <span className="absolute -bottom-1.5 left-1/2 h-0 w-0 -translate-x-1/2 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-card" />
         </div>
       </div>
 
       <div className="mt-1 flex items-center justify-between gap-3">
-        <div className="text-sm text-zinc-900 dark:text-white">
-          Qty <span className="text-zinc-600 dark:text-white/65">{lotCount} lot x {lotSize}</span>
+        <div className="text-sm text-foreground">
+          Qty <span className="text-muted-foreground">{lotCount} lot x {lotSize}</span>
         </div>
-        <div className="grid w-[40%] min-w-[130px] grid-cols-[38px,1fr,38px] items-center gap-2">
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-300 bg-white text-base font-medium text-zinc-900 dark:border-white/40 dark:bg-transparent dark:text-white"
-            onClick={bumpDown}
-            disabled={placing}
-            aria-label="Decrease quantity by lot"
-          >
-            −
-          </button>
-          <input
-            value={qtyInput}
-            onChange={(e) => onQtyChange(e.target.value)}
-            inputMode="numeric"
-            className="h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-center text-sm font-medium text-zinc-900 dark:border-white/40 dark:bg-transparent dark:text-white"
-            aria-invalid={showLotError}
-          />
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-300 bg-white text-base font-medium text-zinc-900 dark:border-white/40 dark:bg-transparent dark:text-white"
-            onClick={bumpUp}
-            disabled={placing}
-            aria-label="Increase quantity by lot"
-          >
-            +
-          </button>
+        <div className="flex w-[min(100%,200px)] min-w-[140px] shrink-0 flex-col items-stretch gap-1">
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-base font-medium text-foreground"
+              onClick={bumpDown}
+              disabled={placing}
+              aria-label="Decrease quantity by lot"
+            >
+              −
+            </button>
+            <input
+              value={qtyInput}
+              onChange={(e) => onQtyChange(e.target.value)}
+              inputMode="numeric"
+              style={{ width: `${qtyInputWidthCh}ch`, maxWidth: "100%" }}
+              className="h-9 min-w-[2.75rem] shrink-0 rounded-lg border border-border bg-card px-1 text-center text-sm font-medium text-foreground tabular-nums"
+              aria-invalid={showLotError}
+            />
+            <button
+              type="button"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-base font-medium text-foreground"
+              onClick={bumpUp}
+              disabled={placing}
+              aria-label="Increase quantity by lot"
+            >
+              +
+            </button>
+          </div>
+          {side === "SELL" && openPositionForContract && openQtyRounded > 0 ? (
+            <div className="flex w-full items-center justify-end gap-1 pl-0.5 pr-0.5 text-[11px] leading-tight sm:text-xs">
+              <button
+                type="button"
+                className="inline-flex items-center gap-0.5 rounded-full  px-2 py-0.5 text-[10px] font-medium text-[#5c5f8a] dark:bg-[#131D36] dark:text-[#9DA0D6]"
+                onClick={() => setQtyInput(String(openQtyRounded))}
+                title="Fill quantity with your open position size"
+              >
+                +{openQtyRounded}
+              </button>
+              <span className="text-muted-foreground">·</span>
+              <span className="shrink-0 text-right text-muted-foreground tabular-nums">
+                Avg ₹{openAvgPx.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          ) : null}
         </div>
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1 text-sm text-zinc-900 dark:text-white">
-          Price <span>{isMarketOrder ? "Market" : "Limit"}</span> <ChevronDown className="h-4 w-4" />
+        <div className="flex items-center gap-1 text-sm text-foreground">
+          Price <span>{isMarketOrder ? "Market" : "Limit"}</span> <ChevronDown className="h-4 w-4 opacity-70" />
         </div>
         <input
           value={priceField}
           onChange={(e) => setPriceField(e.target.value.replace(/[^\d.]/g, ""))}
-          className="h-9 w-[40%] min-w-[130px] rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-white/20 dark:bg-white/10 dark:text-white dark:placeholder:text-white/45"
+          className="h-9 w-[40%] min-w-[130px] rounded-lg border border-border bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground"
           type="text"
           inputMode="decimal"
           placeholder="At market"
@@ -499,88 +524,88 @@ export default function FoTradeModal({ open, onOpenChange, contract, openWithSid
       <div className="mt-2 flex justify-end">
         <button
           type="button"
-          className="inline-flex w-fit border-b border-dashed border-zinc-500 text-sm text-zinc-800 dark:border-white/50 dark:text-white"
+          className="inline-flex w-fit border-b border-dashed border-muted-foreground text-sm text-muted-foreground"
         >
           Add stoploss/target
         </button>
       </div>
 
       <div className="mt-auto">
-      {showLotError && (
-        <div className="mt-3 rounded-lg border border-loss/35 bg-loss/10 px-3 py-2.5 text-center text-sm font-medium text-loss">
-          Quantity should be in multiples of {lotSize}
-        </div>
-      )}
+        {showLotError && (
+          <div className="mt-3 rounded-lg border border-loss/35 bg-loss/10 px-3 py-2.5 text-center text-sm font-medium text-loss">
+            Quantity should be in multiples of {lotSize}
+          </div>
+        )}
 
-      {insufficientBuy && !showLotError && (
-        <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-50 px-3 py-2 text-center text-xs text-amber-900 dark:border-amber-500/25 dark:bg-amber-900/30 dark:text-amber-300">
-          Available balance is not enough
-        </div>
-      )}
+        {insufficientBuy && !showLotError && (
+          <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-50 px-3 py-2 text-center text-xs text-amber-900 dark:border-amber-500/25 dark:bg-amber-900/30 dark:text-amber-300">
+            Available balance is not enough
+          </div>
+        )}
 
-      {isExpired && (
-        <div className="mt-3 rounded-lg border border-loss/30 bg-loss/10 p-3 text-sm font-medium text-loss">
-          Trading is not allowed for expired contracts
-        </div>
-      )}
-      {!isExpired && !isMarketHours && !bypassMarketHours && (
-        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm font-medium text-amber-700 dark:text-amber-400">
-          Order not allowed outside market hours (9:15 AM - 3:30 PM IST)
-        </div>
-      )}
+        {isExpired && (
+          <div className="mt-3 rounded-lg border border-loss/30 bg-loss/10 p-3 text-sm font-medium text-loss">
+            Trading is not allowed for expired contracts
+          </div>
+        )}
+        {!isExpired && !isMarketHours && !bypassMarketHours && (
+          <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm font-medium text-amber-700 dark:text-amber-400">
+            Order not allowed outside market hours (9:15 AM - 3:30 PM IST)
+          </div>
+        )}
 
-      <div className="mt-4 flex items-center justify-between gap-2 text-[13px] text-zinc-800 dark:text-white">
-        <span className="min-w-0 shrink truncate tabular-nums text-zinc-700 dark:text-white/90">
-          Balance : <span className="font-semibold text-zinc-950 dark:text-white">{formatInrCompact(balance)}</span>
-        </span>
-        <div className="flex min-w-0 max-w-[58%] items-center justify-end gap-1.5 tabular-nums">
-          <span className="inline-flex shrink-0 border-b border-dashed border-zinc-400 pb-px text-[13px] text-zinc-600 dark:border-white/50 dark:text-white/70">
-            {side === "BUY" ? "Approx req :" : "Approx val :"}
+        <div className="mt-4 flex items-center justify-between gap-2 text-[13px] text-foreground">
+          <span className="min-w-0 shrink truncate tabular-nums text-muted-foreground">
+            Balance : <span className="font-semibold text-foreground">{formatInrCompact(balance)}</span>
           </span>
-          <span className="min-w-0 truncate text-[13px] font-semibold text-zinc-950 dark:text-white">
-            {qtyValid && approxDisplayed > 0
-              ? `₹${approxDisplayed.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
-              : "—"}
-          </span>
+          <div className="flex min-w-0 max-w-[58%] items-center justify-end gap-1.5 tabular-nums">
+            <span className="inline-flex shrink-0 border-b border-dashed border-muted-foreground pb-px text-[13px] text-muted-foreground">
+              {side === "BUY" ? "Approx req :" : "Approx val :"}
+            </span>
+            <span className="min-w-0 truncate text-[13px] font-semibold text-foreground">
+              {qtyValid && approxDisplayed > 0
+                ? `₹${approxDisplayed.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
+                : "—"}
+            </span>
+            <button
+              type="button"
+              aria-label="Refresh estimate"
+              className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted"
+              onClick={() => {
+                setApproxRefreshing(true);
+                window.setTimeout(() => setApproxRefreshing(false), 450);
+              }}
+            >
+              <RefreshCw className={cn("h-4 w-4", approxRefreshing && "animate-spin")} />
+            </button>
+          </div>
+        </div>
+
+        {side === "BUY" && insufficientBuy ? (
           <button
             type="button"
-            aria-label="Refresh estimate"
-            className="shrink-0 rounded p-0.5 text-zinc-600 hover:bg-zinc-200 dark:text-white/75 dark:hover:bg-white/10 dark:hover:text-white"
             onClick={() => {
-              setApproxRefreshing(true);
-              window.setTimeout(() => setApproxRefreshing(false), 450);
+              onOpenChange(false);
+              navigate("/profile");
             }}
+            disabled={placing || isExpired || (!isMarketHours && !bypassMarketHours) || !qtyValid}
+            className="mt-4 h-11 w-full rounded-lg bg-primary font-semibold text-primary-foreground disabled:opacity-60"
           >
-            <RefreshCw className={cn("h-4 w-4", approxRefreshing && "animate-spin")} />
+            Add money
           </button>
-        </div>
-      </div>
-
-      {side === "BUY" && insufficientBuy ? (
-        <button
-          type="button"
-          onClick={() => {
-            onOpenChange(false);
-            navigate("/profile");
-          }}
-          disabled={placing || isExpired || (!isMarketHours && !bypassMarketHours) || !qtyValid}
-          className="mt-4 h-11 w-full rounded-lg bg-primary font-semibold text-primary-foreground disabled:opacity-60"
-        >
-          Add money
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={onTrade}
-          disabled={placing || isExpired || (!isMarketHours && !bypassMarketHours) || !qtyValid}
-          className={cn(
-            "mt-4 h-11 w-full rounded-lg text-sm font-semibold text-primary-foreground disabled:opacity-60",
-            side === "BUY" ? "bg-primary" : "bg-loss",
-          )}
-        >
-          {side === "BUY" ? "Buy" : "Sell"}
-        </button>
-      )}
+        ) : (
+          <button
+            type="button"
+            onClick={onTrade}
+            disabled={placing || isExpired || (!isMarketHours && !bypassMarketHours) || !qtyValid}
+            className={cn(
+              "mt-4 h-11 w-full rounded-lg text-sm font-semibold text-primary-foreground disabled:opacity-60",
+              side === "BUY" ? "bg-primary" : "bg-loss",
+            )}
+          >
+            {side === "BUY" ? "Buy" : "Sell"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -607,22 +632,22 @@ export default function FoTradeModal({ open, onOpenChange, contract, openWithSid
           <SheetContent
             side="bottom"
             showCloseButton={false}
-            className="h-screen rounded-none border-0 bg-zinc-100 p-0 dark:bg-black"
+            className="h-screen rounded-none border-0 bg-background p-0"
           >
             <div className="flex h-full flex-col">
-              <div className="flex items-center gap-2 bg-zinc-100 px-4 py-3 dark:bg-black">
+              <div className="flex items-center gap-2 border-b border-border bg-card px-4 py-3">
                 <button
                   type="button"
                   onClick={() => onOpenChange(false)}
-                  className="rounded-md p-1 text-zinc-900 hover:bg-zinc-200 dark:text-foreground dark:hover:bg-muted"
+                  className="rounded-md p-1 text-foreground hover:bg-muted"
                   aria-label="Back"
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </button>
                 <div className="min-w-0">
-                  <h3 className="truncate text-[15px] font-semibold text-zinc-950 dark:text-white">{headerTitle}</h3>
+                  <h3 className="truncate text-[15px] font-semibold text-foreground">{headerTitle}</h3>
                   {contract ? (
-                    <p className="mt-0.5 text-[11px] text-zinc-600 dark:text-white/65">
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
                       ₹{displayCurrentLtp.toFixed(2)}{" "}
                       {Number.isFinite(Number(contract.netChange))
                         ? (() => {
@@ -638,13 +663,13 @@ export default function FoTradeModal({ open, onOpenChange, contract, openWithSid
                 </div>
                 <button
                   type="button"
-                  className="ml-auto border-b border-dashed border-zinc-500 text-xs text-zinc-700 dark:border-white/70 dark:text-white/90"
+                  className="ml-auto border-b border-dashed border-muted-foreground text-xs text-muted-foreground"
                 >
                   Depth
                 </button>
               </div>
               <div
-                className="flex-1 overflow-y-auto bg-zinc-100 p-4 dark:bg-black"
+                className="flex-1 overflow-y-auto bg-background p-4"
                 style={{ paddingBottom: Math.max(12, viewportBottomInset) }}
               >
                 {tradeForm}

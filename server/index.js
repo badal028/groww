@@ -1614,6 +1614,23 @@ app.get("/paper/positions", authMiddleware, (req, res) => {
   res.json({ status: "ok", positions });
 });
 
+/** Clear all paper positions (same allowlist as virtual wallet). Midnight IST prune still applies for exited rows. */
+app.post("/paper/positions/clear", authMiddleware, (req, res) => {
+  const em = String(req.user.email || "")
+    .trim()
+    .toLowerCase();
+  if (!VIRTUAL_WALLET_CONTROL_EMAILS.has(em)) {
+    return res.status(403).json({ status: "error", message: "Position reset not enabled for this account" });
+  }
+  const updated = updateUser(req.user.id, (prev) => ({
+    ...prev,
+    positions: [],
+    updatedAt: new Date().toISOString(),
+  }));
+  if (!updated) return res.status(404).json({ status: "error", message: "User not found" });
+  return res.json({ status: "ok", positions: [] });
+});
+
 /** Set or add virtual (paper) wallet for allowlisted demo accounts only. */
 app.post("/paper/wallet/virtual", authMiddleware, (req, res) => {
   try {
