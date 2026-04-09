@@ -25,6 +25,8 @@ import AboutGrowwTraderPage from "./pages/seo/AboutGrowwTraderPage";
 import AboutOptixPage from "./pages/seo/AboutOptixPage";
 import PressPage from "./pages/seo/PressPage";
 import VipMembershipPage from "./pages/VipMembershipPage";
+import BottomNav from "./components/BottomNav";
+import GrowwCloneAccessPage from "./pages/seo/GrowwCloneAccessPage";
 
 const queryClient = new QueryClient();
 
@@ -67,6 +69,7 @@ const AppLayout = () => {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
+      <BottomNav />
     </div>
   );
 };
@@ -87,6 +90,9 @@ const App = () => (
               <Route path="/about-optix" element={<AboutOptixPage />} />
               <Route path="/press" element={<PressPage />} />
               <Route path="/media" element={<Navigate to="/press" replace />} />
+              <Route path="/groww-clone-apk" element={<GrowwCloneAccessPage />} />
+              <Route path="/groww-clone-app" element={<GrowwCloneAccessPage />} />
+              <Route path="/groww-clone" element={<GrowwCloneAccessPage />} />
               <Route path="/vip-membership" element={<VipMembershipPage />} />
               <Route path="/*" element={<AppLayout />} />
             </Routes>

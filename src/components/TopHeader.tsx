@@ -41,7 +41,7 @@ const TopHeader: React.FC<TopHeaderProps> = ({ title, onSearchClick, showBackBut
         ) : (
           <GrowwLogo size={28} />
         )}
-        <span className="text-lg font-semibold text-foreground">{title}</span>
+        <span className="text-lg font-semibold text-foreground">F&O</span>
       </div>
       <div className="flex items-center gap-3">
         <button onClick={toggleTheme} className="rounded-full p-1.5 text-muted-foreground hover:bg-muted">

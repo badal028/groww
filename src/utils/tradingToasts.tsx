@@ -62,3 +62,25 @@ export function showPositionExitToast(descriptionLine: string, pnlLine: string):
     className: "!bg-transparent !border-0 !p-0 !shadow-none",
   });
 }
+
+/** Groww-like compact toast shown on swipe-to-exit success. */
+export function showSellOrderExecutedToast(): void {
+  toast.custom(
+    () => (
+      <div className="pointer-events-auto mx-[max(0.5rem,env(safe-area-inset-left))] mr-[max(0.5rem,env(safe-area-inset-right))] flex items-center gap-2.5 rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-neutral-900 shadow-md sm:mx-auto sm:w-[min(100vw-1rem,28rem)]">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500">
+          <CheckCircle2 className="h-4 w-4 text-white" strokeWidth={2.5} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium leading-tight text-neutral-900">Sell order executed</p>
+          <p className="mt-0.5 text-[11px] leading-tight text-neutral-500">in 0.02 seconds ⚡</p>
+        </div>
+      </div>
+    ),
+    {
+      duration: 2000,
+      position: "bottom-center",
+      className: "!bg-transparent !border-0 !p-0 !shadow-none",
+    },
+  );
+}

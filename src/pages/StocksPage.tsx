@@ -71,8 +71,8 @@ const StocksPage: React.FC = () => {
   const { positions, loading: positionsLoading } = usePaperPositions();
   const { orders, loading: ordersLoading } = usePaperOrders();
   const { user, logout } = useAuth();
-  const desktopTopTabs = ['Explore', 'Holdings', 'Positions', 'Orders', 'Watchlist'];
-  const mobileTopTabs = ['Explore', 'Positions', 'Holdings', 'Orders', 'Watchlist', 'ETF'];
+  const desktopTopTabs = ['Explore', 'Positions', 'Orders', 'All Watchlists', 'Holdings'];
+  const mobileTopTabs = ['Explore', 'Positions', 'Orders', 'All Watchlists', 'Holdings', 'ETF'];
 
   const mobileSectionTitle = activeTab === 'Explore' ? 'Explore' : activeTab;
   const desktopStockGridTitle =
@@ -80,8 +80,8 @@ const StocksPage: React.FC = () => {
       ? 'Explore stocks'
       : activeTab === 'Holdings'
         ? 'Holdings'
-        : activeTab === 'Watchlist'
-          ? 'Watchlist'
+        : activeTab === 'All Watchlist'
+          ? 'All Watchlist'
           : activeTab === 'ETF'
             ? 'ETF'
             : 'Explore stocks';
@@ -194,7 +194,7 @@ const StocksPage: React.FC = () => {
 
         {/* Category Tabs */}
         <div
-          className="flex gap-2 overflow-x-auto bg-background px-4 pb-3 lg:px-0 lg:py-2 scrollbar-hide"
+          className="sticky top-[0px] z-30 flex gap-2 overflow-x-auto bg-background px-4 pb-3 lg:px-0 lg:py-2 scrollbar-hide"
         >
           {mobileTopTabs.map(cat => (
             <button

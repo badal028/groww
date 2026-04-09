@@ -19,6 +19,7 @@ import SwipeRevealExit from "@/components/SwipeRevealExit";
 import PositionActionSheet from "@/components/PositionActionSheet";
 import FoTradeModal from "@/components/fo/FoTradeModal";
 import FoOptionChainModal, { type FoContract } from "@/components/fo/FoOptionChainModal";
+import { showSellOrderExecutedToast } from "@/utils/tradingToasts";
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
 
@@ -49,7 +50,7 @@ function formatPositionTitle(p: PaperPosition): string {
 }
 
 function productLine(p: PaperPosition): string {
-  return String(p.instrumentType).toUpperCase() === "FO" ? "NRML · NFO" : "Delivery · NSE";
+  return String(p.instrumentType).toUpperCase() === "FO" ? "Delivery · BSE" : "Delivery · BSE";
 }
 
 function positionToFoContract(p: PaperPosition, mkt: number): FoContract | null {
@@ -172,6 +173,7 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.message || "Could not exit position");
+        showSellOrderExecutedToast();
         await refreshMe();
         window.dispatchEvent(new Event(PAPER_POSITIONS_REFRESH_EVENT));
       } catch (err) {
@@ -219,14 +221,14 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
   };
 
   const pnlCard = (
-    <div className="flex items-center justify-between gap-3 rounded-2xl border-0 bg-card px-4 py-4 dark:bg-[#232425]">
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-5 dark:bg-[#141819]">
       <div className="min-w-0 flex-1">
         <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           Total P&amp;L
         </p>
         <p
           className={cn(
-            "mt-1 text-[13px] font-bold tabular-nums leading-none tracking-tight lg:text-[1.75rem]",
+            "mt-2 text-[13px] font-bold tabular-nums leading-none tracking-tight lg:text-[1.75rem]",
             totalPnl >= 0 ? "text-profit" : "text-loss",
           )}
         >
@@ -235,12 +237,30 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
       </div>
       <button
         type="button"
-        className="flex shrink-0 items-center gap-1 text-xs font-medium text-profit hover:underline"
+        className="flex shrink-0 items-center gap-1 text-xs font-medium text-[#1ED3A8] dark:text-white"
       >
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-profit/15 text-[10px]">
-          ₹
+        <span className="border-b border-dashed border-[#1ED3A8]/70 pb-px dark:border-white/70">Set Safe Exit</span>
+        <span className="inline-flex h-7 w-7 items-center justify-center" aria-hidden>
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
+            <path
+              d="M12 2.75L20.2 5.95V12.2C20.2 17.15 16.95 20.95 12 22.4C7.05 20.95 3.8 17.15 3.8 12.2V5.95L12 2.75Z"
+              fill="#43D8BF"
+              stroke="#2ABAA2"
+              strokeWidth="0.9"
+            />
+            <text
+              x="12"
+              y="16.6"
+              textAnchor="middle"
+              fontSize="12.5"
+              fontWeight="700"
+              fill="#1F3F3A"
+              style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}
+            >
+              ₹
+            </text>
+          </svg>
         </span>
-        Set Safe Exit
       </button>
     </div>
   );
@@ -259,7 +279,7 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
 
   return (
     <>
-    <div className={cn("space-y-4", className)}>
+    <div className={cn("space-y-4", compact && "flex h-full flex-col overflow-hidden", className)}>
       {pnlCard}
 
       {/* Toolbar */}
@@ -299,8 +319,8 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
       {/* List */}
       <div
         className={cn(
-          "overflow-hidden rounded-2xl border-0 bg-card dark:bg-[#0F1012]",
-          compact && "rounded-xl",
+          " border-0 bg-card dark:bg-[#0F1012]",
+          compact ? "min-h-0 flex-1 overflow-y-auto scrollbar-hide  pb-20" : "overflow-hidden",
         )}
       >
         {rows.map(({ p, mkt, pnl }) => {

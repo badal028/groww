@@ -76,7 +76,7 @@ const LoginPage: React.FC = () => {
         <p className="mb-6 text-sm text-muted-foreground">
           {mode === 'login'
             ? 'Login to continue earning'
-            : 'New sign-ups are limited to authorized test accounts. Existing users: use Login.'}
+            : 'New sign-ups are limited. Please contact support for application access on instagram @optixtrade'}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-3">

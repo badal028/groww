@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState } from "react";
 import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const PANEL = 72;
+const PANEL = 78;
 
 type Props = {
   children: React.ReactNode;
@@ -58,7 +58,7 @@ export default function SwipeRevealExit({ children, onExit, disabled, className,
   return (
     <div className={cn("relative overflow-hidden rounded-none", className)}>
       <div
-        className="absolute inset-y-0 right-0 z-0 flex w-[72px] flex-col items-center justify-center gap-0.5 bg-[#fdf2ec] text-[#cd3d14] dark:bg-[#261410] dark:text-[#cd3d14]"
+        className="absolute inset-y-0 right-0 z-0 flex items-center justify-end pr-2"
         style={{ width: PANEL }}
       >
         <button
@@ -69,9 +69,9 @@ export default function SwipeRevealExit({ children, onExit, disabled, className,
             onExit();
             close();
           }}
-          className="flex flex-col items-center justify-center gap-0.5 px-2 py-2 text-[11px] font-medium disabled:opacity-40"
+          className="flex h-[88%] w-[56px] flex-col items-center justify-center gap-1 rounded-2xl bg-[#2C1811] px-2 py-2 text-[11px] font-medium text-[#FE9479] disabled:opacity-40"
         >
-          <Zap className="h-5 w-5" />
+          <Zap className="h-5 w-5 text-[#FE9479]" />
           <span>Exit</span>
         </button>
       </div>

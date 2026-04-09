@@ -540,6 +540,7 @@ const app = express();
 if (process.env.TRUST_PROXY === "1") {
   app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS) || 1);
 }
+pruneUsersToSignupAllowlist();
 const port = Number(process.env.PORT || 3001);
 
 /** Trim + strip trailing slashes so https://app.com and https://app.com/ match. */
@@ -583,6 +584,32 @@ const adminEmail = String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim
 const SIGNUP_ALLOWED_EMAILS = new Set(
   ["badal@gmail.com", "badal1@gmail.com", "pbadal392@gmail.com"].map((e) => e.trim().toLowerCase()),
 );
+
+/** Keep only allowlisted accounts in DB (requested hard restriction). */
+const pruneUsersToSignupAllowlist = () => {
+  try {
+    const db = readAllData();
+    const users = Array.isArray(db?.users) ? db.users : [];
+    const keepUsers = users.filter((u) => SIGNUP_ALLOWED_EMAILS.has(String(u?.email || "").trim().toLowerCase()));
+    const keepIds = new Set(keepUsers.map((u) => String(u.id)));
+    const contests = (Array.isArray(db?.contests) ? db.contests : []).map((c) => ({
+      ...c,
+      participants: (Array.isArray(c?.participants) ? c.participants : []).filter((p) => keepIds.has(String(p.userId))),
+      payouts: (Array.isArray(c?.payouts) ? c.payouts : []).filter((p) => keepIds.has(String(p.userId))),
+      updatedAt: new Date().toISOString(),
+    }));
+    const prevCount = users.length;
+    const nextCount = keepUsers.length;
+    if (nextCount !== prevCount) {
+      writeAllData({ ...db, users: keepUsers, contests });
+      // eslint-disable-next-line no-console
+      console.log(`[admin policy] pruned users to allowlist: ${prevCount} -> ${nextCount}`);
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[admin policy] allowlist prune failed:", e?.message || e);
+  }
+};
 const marketHoursBypassEmails = new Set(["badal@gmail.com"]);
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
@@ -1727,6 +1754,56 @@ app.get("/admin/users", authMiddleware, ensureAdmin, (req, res) => {
       positionsCount: Array.isArray(u.positions) ? u.positions.length : 0,
     })),
   });
+});
+
+/** Admin: create a user with email/password directly (login works immediately). */
+app.post("/admin/users/create", authMiddleware, ensureAdmin, async (req, res) => {
+  try {
+    const { name, email, password } = req.body || {};
+    const nameTrim = String(name || "").trim();
+    const emailNorm = String(email || "")
+      .trim()
+      .toLowerCase();
+    const pwd = String(password || "");
+
+    if (!nameTrim || !emailNorm || !pwd) {
+      return res.status(400).json({ status: "error", message: "name, email and password are required" });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) {
+      return res.status(400).json({ status: "error", message: "Enter a valid email" });
+    }
+    if (pwd.length < 6) {
+      return res.status(400).json({ status: "error", message: "Password should be at least 6 characters" });
+    }
+    const existing = getUserByEmail(emailNorm);
+    if (existing) {
+      return res.status(409).json({ status: "error", message: "Email already registered" });
+    }
+
+    const passwordHash = await bcrypt.hash(pwd, 10);
+    const created = createUser({
+      id: randomUUID(),
+      name: nameTrim,
+      email: emailNorm,
+      passwordHash,
+      walletInr: virtualWalletForNewUser(emailNorm),
+      realWalletInr: 0,
+      realizedPnlInr: 0,
+      avatarUrl: null,
+      createdAt: new Date().toISOString(),
+    });
+    return res.status(201).json({
+      status: "ok",
+      user: {
+        id: created.id,
+        name: created.name,
+        email: created.email,
+        walletInr: Number(created.walletInr || 0),
+      },
+    });
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: e?.message || "User creation failed" });
+  }
 });
 
 app.post("/admin/users/delete", authMiddleware, ensureAdmin, (req, res) => {

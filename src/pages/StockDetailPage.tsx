@@ -148,7 +148,8 @@ const StockDetailPage: React.FC = () => {
   // SVG gradient ids must not contain spaces/special chars, otherwise `url(#id)` may fail
   // and the area fill can fallback to a solid black background.
   const gradId = `detailChart-${String(displayStock.id).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-  const stroke = isPositive ? 'hsl(164 100% 41%)' : 'hsl(0 72% 51%)';
+  const stroke = isPositive ? 'hsl(164 100% 41%)' : '#ff2d2d';
+  const areaTopOpacity = isPositive ? 0.22 : 0.3;
 
   const exchangeLabel =
     displayStock.sector === 'Index'
@@ -261,7 +262,7 @@ const StockDetailPage: React.FC = () => {
             </p>
           )}
 
-          <div className="my-6 rounded-xl border border-border/60 bg-card/30 p-2">
+          <div className="my-6 rounded-xl border border-border/50 bg-card/20 p-2 dark:bg-[#0b0d10]">
             <svg
               viewBox={`0 0 ${CHART_W} ${CHART_H}`}
               className="w-full touch-none"
@@ -270,7 +271,7 @@ const StockDetailPage: React.FC = () => {
             >
               <defs>
                 <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={stroke} stopOpacity="0.22" />
+                  <stop offset="0%" stopColor={stroke} stopOpacity={areaTopOpacity} />
                   <stop offset="100%" stopColor={stroke} stopOpacity="0" />
                 </linearGradient>
               </defs>

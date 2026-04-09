@@ -192,6 +192,10 @@ export default function AdminPage() {
     endsAtISO: "",
   });
   const [seedDummyCount, setSeedDummyCount] = useState("250");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [creatingUser, setCreatingUser] = useState(false);
 
   const authHeaders = useMemo(() => {
     if (!token) return {};
@@ -475,6 +479,70 @@ export default function AdminPage() {
       </div>
 
       {err && <div className="mb-4 rounded border border-loss/30 bg-loss/10 p-3 text-sm text-loss">{err}</div>}
+
+      {adminTab === "overview" ? (
+        <div className="mb-4 rounded-xl border border-border bg-card p-4">
+          <div className="text-sm font-semibold">Create user account</div>
+          <p className="mt-1 text-xs text-muted-foreground">Admin can create a user with password for immediate login.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <input
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+              placeholder="Full name"
+              value={newUserName}
+              onChange={(e) => setNewUserName(e.target.value)}
+            />
+            <input
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+              placeholder="Email"
+              value={newUserEmail}
+              onChange={(e) => setNewUserEmail(e.target.value)}
+            />
+            <input
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+              placeholder="Password"
+              type="text"
+              value={newUserPassword}
+              onChange={(e) => setNewUserPassword(e.target.value)}
+            />
+          </div>
+          <button
+            type="button"
+            className="mt-3 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+            disabled={creatingUser}
+            onClick={async () => {
+              if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) {
+                toast.error("Name, email and password are required");
+                return;
+              }
+              setCreatingUser(true);
+              try {
+                const r = await fetch(`${apiBase}/admin/users/create`, {
+                  method: "POST",
+                  headers: { ...authHeaders, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    name: newUserName.trim(),
+                    email: newUserEmail.trim(),
+                    password: newUserPassword,
+                  }),
+                });
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(d?.message || "Could not create user");
+                toast.success("User account created");
+                setNewUserName("");
+                setNewUserEmail("");
+                setNewUserPassword("");
+                await refreshAdminListsAfterContestChange();
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Could not create user");
+              } finally {
+                setCreatingUser(false);
+              }
+            }}
+          >
+            {creatingUser ? "Creating..." : "Create user"}
+          </button>
+        </div>
+      ) : null}
 
       {loading && !hasLoadedData ? (
         <div className="text-sm text-muted-foreground">Loading…</div>
