@@ -586,7 +586,7 @@ const SIGNUP_ALLOWED_EMAILS = new Set(
 );
 
 /** Keep only allowlisted accounts in DB (requested hard restriction). */
-const pruneUsersToSignupAllowlist = () => {
+function pruneUsersToSignupAllowlist() {
   try {
     const db = readAllData();
     const users = Array.isArray(db?.users) ? db.users : [];
@@ -609,7 +609,7 @@ const pruneUsersToSignupAllowlist = () => {
     // eslint-disable-next-line no-console
     console.error("[admin policy] allowlist prune failed:", e?.message || e);
   }
-};
+}
 const marketHoursBypassEmails = new Set(["badal@gmail.com"]);
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
