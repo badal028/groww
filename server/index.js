@@ -571,7 +571,12 @@ const app = express();
 if (process.env.TRUST_PROXY === "1") {
   app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS) || 1);
 }
-pruneUsersToSignupAllowlist();
+if (process.env.SKIP_SIGNUP_ALLOWLIST_PRUNE !== "1") {
+  pruneUsersToSignupAllowlist();
+} else {
+  // eslint-disable-next-line no-console
+  console.warn("[admin policy] SKIP_SIGNUP_ALLOWLIST_PRUNE=1 — startup user prune disabled");
+}
 const port = Number(process.env.PORT || 3001);
 
 /** Trim + strip trailing slashes so https://app.com and https://app.com/ match. */
@@ -1008,6 +1013,13 @@ app.post("/auth/login", async (req, res) => {
     const user = getUserByEmail(email);
     if (!user) return res.status(401).json({ status: "error", message: "Invalid credentials" });
 
+    if (!user.passwordHash || typeof user.passwordHash !== "string") {
+      return res.status(401).json({
+        status: "error",
+        message: "No password on file for this account. Ask admin to set a password, or use server account-recovery if configured.",
+      });
+    }
+
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ status: "error", message: "Invalid credentials" });
     const normalizedUser = ensureUserFinancials(user);
@@ -1028,6 +1040,59 @@ app.post("/auth/login", async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ status: "error", message: error?.message || "Login failed" });
+  }
+});
+
+/**
+ * Break-glass: set or create password for allowlisted emails only.
+ * Set ACCOUNT_RECOVERY_SECRET (long random) in .env.server, call once from curl, then remove the secret.
+ */
+app.post("/auth/account-recovery", async (req, res) => {
+  try {
+    const configured = String(process.env.ACCOUNT_RECOVERY_SECRET || "").trim();
+    if (configured.length < 12) {
+      return res.status(503).json({ status: "error", message: "Account recovery is not configured on this server" });
+    }
+    const { email, password, recoverySecret } = req.body || {};
+    if (String(recoverySecret || "") !== configured) {
+      return res.status(401).json({ status: "error", message: "Invalid recovery secret" });
+    }
+    const emailNorm = String(email || "").trim().toLowerCase();
+    if (!emailNorm || !SIGNUP_ALLOWED_EMAILS.has(emailNorm)) {
+      return res.status(403).json({ status: "error", message: "Recovery is only allowed for authorized test emails" });
+    }
+    const pwd = String(password || "");
+    if (pwd.length < 6) {
+      return res.status(400).json({ status: "error", message: "Password should be at least 6 characters" });
+    }
+    const passwordHash = await bcrypt.hash(pwd, 10);
+    const existing = getUserByEmail(emailNorm);
+    if (existing) {
+      updateUser(existing.id, (prev) => ({
+        ...prev,
+        passwordHash,
+        updatedAt: new Date().toISOString(),
+      }));
+      return res.json({ status: "ok", message: "Password updated. Log in with the new password." });
+    }
+    const created = createUser({
+      id: randomUUID(),
+      name: emailNorm.split("@")[0],
+      email: emailNorm,
+      passwordHash,
+      walletInr: virtualWalletForNewUser(emailNorm),
+      realWalletInr: 0,
+      realizedPnlInr: 0,
+      avatarUrl: null,
+      createdAt: new Date().toISOString(),
+    });
+    return res.status(201).json({
+      status: "ok",
+      message: "Account created. Log in with the new password.",
+      user: { id: created.id, email: created.email },
+    });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error?.message || "Recovery failed" });
   }
 });
 
@@ -1804,6 +1869,33 @@ app.post("/admin/users/create", authMiddleware, ensureAdmin, async (req, res) =>
     });
   } catch (e) {
     return res.status(500).json({ status: "error", message: e?.message || "User creation failed" });
+  }
+});
+
+/** Admin: reset password for an existing user (by email). */
+app.post("/admin/users/reset-password", authMiddleware, ensureAdmin, async (req, res) => {
+  try {
+    const emailNorm = String(req.body?.email || "")
+      .trim()
+      .toLowerCase();
+    const pwd = String(req.body?.password || "");
+    if (!emailNorm || !pwd) {
+      return res.status(400).json({ status: "error", message: "email and password are required" });
+    }
+    if (pwd.length < 6) {
+      return res.status(400).json({ status: "error", message: "Password should be at least 6 characters" });
+    }
+    const user = getUserByEmail(emailNorm);
+    if (!user) return res.status(404).json({ status: "error", message: "User not found" });
+    const passwordHash = await bcrypt.hash(pwd, 10);
+    updateUser(user.id, (prev) => ({
+      ...prev,
+      passwordHash,
+      updatedAt: new Date().toISOString(),
+    }));
+    return res.json({ status: "ok", message: "Password reset" });
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: e?.message || "Reset failed" });
   }
 });
 
