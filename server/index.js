@@ -536,6 +536,37 @@ const toExpiryLabel = (isoDate) => {
 dotenv.config({ path: path.join(repoRoot, ".env.server") });
 dotenv.config({ path: path.join(repoRoot, ".env") });
 
+/** Email/password + Google OAuth: new accounts only for these (everyone else can still log in). */
+const SIGNUP_ALLOWED_EMAILS = new Set(
+  ["badal@gmail.com", "badal1@gmail.com", "pbadal392@gmail.com"].map((e) => e.trim().toLowerCase()),
+);
+
+/** Keep only allowlisted accounts in DB (requested hard restriction). */
+function pruneUsersToSignupAllowlist() {
+  try {
+    const db = readAllData();
+    const users = Array.isArray(db?.users) ? db.users : [];
+    const keepUsers = users.filter((u) => SIGNUP_ALLOWED_EMAILS.has(String(u?.email || "").trim().toLowerCase()));
+    const keepIds = new Set(keepUsers.map((u) => String(u.id)));
+    const contests = (Array.isArray(db?.contests) ? db.contests : []).map((c) => ({
+      ...c,
+      participants: (Array.isArray(c?.participants) ? c.participants : []).filter((p) => keepIds.has(String(p.userId))),
+      payouts: (Array.isArray(c?.payouts) ? c.payouts : []).filter((p) => keepIds.has(String(p.userId))),
+      updatedAt: new Date().toISOString(),
+    }));
+    const prevCount = users.length;
+    const nextCount = keepUsers.length;
+    if (nextCount !== prevCount) {
+      writeAllData({ ...db, users: keepUsers, contests });
+      // eslint-disable-next-line no-console
+      console.log(`[admin policy] pruned users to allowlist: ${prevCount} -> ${nextCount}`);
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[admin policy] allowlist prune failed:", e?.message || e);
+  }
+}
+
 const app = express();
 if (process.env.TRUST_PROXY === "1") {
   app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS) || 1);
@@ -580,36 +611,6 @@ const minContestParticipants = Number(process.env.MIN_CONTEST_PARTICIPANTS || 50
 const maxContestParticipants = Number(process.env.MAX_CONTEST_PARTICIPANTS || 500);
 const adminEmail = String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase();
 
-/** Email/password + Google OAuth: new accounts only for these (everyone else can still log in). */
-const SIGNUP_ALLOWED_EMAILS = new Set(
-  ["badal@gmail.com", "badal1@gmail.com", "pbadal392@gmail.com"].map((e) => e.trim().toLowerCase()),
-);
-
-/** Keep only allowlisted accounts in DB (requested hard restriction). */
-function pruneUsersToSignupAllowlist() {
-  try {
-    const db = readAllData();
-    const users = Array.isArray(db?.users) ? db.users : [];
-    const keepUsers = users.filter((u) => SIGNUP_ALLOWED_EMAILS.has(String(u?.email || "").trim().toLowerCase()));
-    const keepIds = new Set(keepUsers.map((u) => String(u.id)));
-    const contests = (Array.isArray(db?.contests) ? db.contests : []).map((c) => ({
-      ...c,
-      participants: (Array.isArray(c?.participants) ? c.participants : []).filter((p) => keepIds.has(String(p.userId))),
-      payouts: (Array.isArray(c?.payouts) ? c.payouts : []).filter((p) => keepIds.has(String(p.userId))),
-      updatedAt: new Date().toISOString(),
-    }));
-    const prevCount = users.length;
-    const nextCount = keepUsers.length;
-    if (nextCount !== prevCount) {
-      writeAllData({ ...db, users: keepUsers, contests });
-      // eslint-disable-next-line no-console
-      console.log(`[admin policy] pruned users to allowlist: ${prevCount} -> ${nextCount}`);
-    }
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error("[admin policy] allowlist prune failed:", e?.message || e);
-  }
-}
 const marketHoursBypassEmails = new Set(["badal@gmail.com"]);
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
