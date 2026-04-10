@@ -13,6 +13,7 @@ import { subscribeKiteMarket } from "@/services/kiteMarketWsHub";
 import { ArrowLeft, ChevronDown, RefreshCw, Settings } from "lucide-react";
 import { formatInrCompact } from "@/utils/inrCompact";
 import { usePaperPositions } from "@/hooks/usePaperPositions";
+import { formatFoUnderlyingDisplay } from "@/lib/foDisplaySymbol";
 
 type Props = {
   open: boolean;
@@ -216,7 +217,7 @@ export default function FoTradeModal({ open, onOpenChange, contract, openWithSid
         }).format(d)
       : "";
     const optLabel = contract.optionType === "CE" ? "Call" : "Put";
-    return `${contract.underlyingSymbol} ${dateLabel} ${contract.strike} ${optLabel}`.trim();
+    return `${formatFoUnderlyingDisplay(contract.underlyingSymbol)} ${dateLabel} ${contract.strike} ${optLabel}`.trim();
   }, [contract]);
 
   const qtyNum = useMemo(() => {
@@ -303,6 +304,34 @@ export default function FoTradeModal({ open, onOpenChange, contract, openWithSid
       const marketable =
         side === "BUY" ? limitPx >= ltpNow - TOUCH_EPS : limitPx <= ltpNow + TOUCH_EPS;
       if (!marketable) {
+        if (side === "SELL") {
+          const ks = contract.kiteSymbol?.trim();
+          if (!ks) {
+            toast.error("Missing quote stream for this contract");
+            return false;
+          }
+          const result = await placeOrderRef.current({
+            symbol: contract.underlyingSymbol,
+            side,
+            quantity: qtyNum,
+            price: Number(limitPx.toFixed(2)),
+            orderMode: "LIMIT",
+            instrumentType: "FO",
+            optionType: contract.optionType,
+            strike: contract.strike,
+            expiry: contract.expiry,
+            product: "NRML",
+            kiteSymbol: ks,
+            deferUntilTouch: true,
+          });
+          if (!result.ok) {
+            toast.error(result.message || "Order failed");
+            return false;
+          }
+          onOpenChange(false);
+          navigate("/stocks?tab=Positions");
+          return true;
+        }
         return false;
       }
     }

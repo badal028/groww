@@ -2673,6 +2673,49 @@ app.post("/paper/order", authMiddleware, (req, res) => {
       product: String(product).toUpperCase(),
     };
     const instrumentKey = buildInstrumentKey(orderPayload);
+    const kiteSymNorm = kiteSymbolBody ? String(kiteSymbolBody).trim() : "";
+    const deferUntilTouch = Boolean(req.body?.deferUntilTouch);
+
+    if (deferUntilTouch && normalizedSide === "SELL" && String(orderMode).toUpperCase() === "LIMIT") {
+      try {
+        const updatedPending = updateUser(req.user.id, (prev) => {
+          const orders = prev.orders || [];
+          const positions = prev.positions || [];
+          const posIdx = positions.findIndex(
+            (p) =>
+              !p.exited &&
+              Number(p.quantity || 0) > 0 &&
+              String(p.baseInstrumentKey || p.instrumentKey) === instrumentKey,
+          );
+          if (posIdx < 0) throw new Error("No open position for this contract");
+          const existingPos = positions[posIdx];
+          if (Number(existingPos.quantity || 0) < qty) throw new Error("Insufficient quantity to sell");
+          if (!kiteSymNorm) throw new Error("Missing quote stream key for limit sell");
+          const newOrder = {
+            id: randomUUID(),
+            ...orderPayload,
+            notional,
+            status: "PENDING",
+            filledAt: null,
+            kiteSymbol: kiteSymNorm,
+          };
+          return {
+            ...prev,
+            orders: [...orders, newOrder],
+            updatedAt: new Date().toISOString(),
+          };
+        });
+        if (!updatedPending) return res.status(404).json({ status: "error", message: "User not found" });
+        return res.json({
+          status: "ok",
+          order: updatedPending.orders[updatedPending.orders.length - 1],
+          walletInr: updatedPending.walletInr,
+          positions: updatedPending.positions,
+        });
+      } catch (error) {
+        return res.status(400).json({ status: "error", message: error?.message || "Pending order failed" });
+      }
+    }
 
     const updated = updateUser(req.user.id, (prev) => {
       const orders = prev.orders || [];
@@ -2688,7 +2731,6 @@ app.post("/paper/order", authMiddleware, (req, res) => {
           Number(p.quantity || 0) > 0 &&
           String(p.baseInstrumentKey || p.instrumentKey) === instrumentKey,
       );
-      const kiteSymNorm = kiteSymbolBody ? String(kiteSymbolBody).trim() : "";
       const hasAnyHistoryForContract = positions.some(
         (p) => String(p.baseInstrumentKey || p.instrumentKey) === instrumentKey,
       );
@@ -2781,6 +2823,108 @@ app.post("/paper/order", authMiddleware, (req, res) => {
     });
   } catch (error) {
     return res.status(400).json({ status: "error", message: error?.message || "Order placement failed" });
+  }
+});
+
+app.post("/paper/order/execute-pending", authMiddleware, (req, res) => {
+  try {
+    const email = String(req.user?.email || "")
+      .trim()
+      .toLowerCase();
+    const bypassMarketHours = marketHoursBypassEmails.has(email);
+    if (!bypassMarketHours && !isWithinMarketHoursIST()) {
+      return res.status(400).json({
+        status: "error",
+        message: "Order not allowed outside market hours (9:15 AM - 3:30 PM IST)",
+      });
+    }
+    const { orderId } = req.body || {};
+    if (!orderId || typeof orderId !== "string") {
+      return res.status(400).json({ status: "error", message: "orderId is required" });
+    }
+
+    const updated = updateUser(req.user.id, (prev) => {
+      const orders = [...(prev.orders || [])];
+      const oi = orders.findIndex((o) => o.id === orderId && String(o.status || "").toUpperCase() === "PENDING");
+      if (oi < 0) throw new Error("Pending order not found");
+      const ord = orders[oi];
+      if (String(ord.side || "").toUpperCase() !== "SELL") throw new Error("Invalid pending order");
+
+      const orderPayload = {
+        symbol: String(ord.symbol || "").toUpperCase(),
+        side: "SELL",
+        quantity: Number(ord.quantity),
+        price: Number(ord.price),
+        orderMode: String(ord.orderMode || "LIMIT").toUpperCase(),
+        instrumentType: String(ord.instrumentType || "FO").toUpperCase(),
+        optionType: ord.optionType ? String(ord.optionType).toUpperCase() : null,
+        strike: ord.strike != null ? Number(ord.strike) : null,
+        expiry: ord.expiry || null,
+        product: String(ord.product || "NRML").toUpperCase(),
+      };
+      const ikey = buildInstrumentKey(orderPayload);
+      const qty = Number(orderPayload.quantity);
+      const px = Number(orderPayload.price);
+      if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(px) || px <= 0) {
+        throw new Error("Invalid pending order payload");
+      }
+      const notional = Number((qty * px).toFixed(2));
+
+      const positions = [...(prev.positions || [])];
+      let walletInr = Number(prev.walletInr || 0);
+      let realizedDelta = 0;
+      const prevRealizedAgg = Number(prev.realizedPnlInr || 0);
+      const nowISO = new Date().toISOString();
+
+      const posIdx = positions.findIndex(
+        (p) =>
+          !p.exited &&
+          Number(p.quantity || 0) > 0 &&
+          String(p.baseInstrumentKey || p.instrumentKey) === ikey,
+      );
+      if (posIdx < 0) throw new Error("No open position for this contract");
+      const existingPos = { ...positions[posIdx] };
+      if (Number(existingPos.quantity || 0) < qty) throw new Error("Insufficient quantity to sell");
+
+      const prevAvgForSell = Number(existingPos.avgPrice);
+      existingPos.quantity = Number((existingPos.quantity - qty).toFixed(6));
+      walletInr = Number((walletInr + notional).toFixed(2));
+      const fullyClosed =
+        !Number.isFinite(existingPos.quantity) || existingPos.quantity <= 0 || existingPos.quantity < 1e-9;
+      if (fullyClosed) {
+        const lineRealized = Number(((px - prevAvgForSell) * qty).toFixed(2));
+        realizedDelta = lineRealized;
+        existingPos.quantity = 0;
+        existingPos.avgPrice = 0;
+        existingPos.exited = true;
+        existingPos.exitedAt = nowISO;
+        existingPos.exitPrice = Number(px.toFixed(2));
+        existingPos.realizedPnlInr = lineRealized;
+      }
+
+      positions[posIdx] = existingPos;
+      const filteredPositions = positions.filter((p) => p.quantity > 0 || p.exited);
+      orders[oi] = { ...ord, status: "FILLED", filledAt: nowISO };
+
+      return {
+        ...prev,
+        walletInr,
+        positions: filteredPositions,
+        orders,
+        realizedPnlInr: Number((prevRealizedAgg + realizedDelta).toFixed(2)),
+        updatedAt: nowISO,
+      };
+    });
+
+    if (!updated) return res.status(404).json({ status: "error", message: "User not found" });
+    return res.json({
+      status: "ok",
+      order: updated.orders.find((o) => o.id === orderId),
+      walletInr: updated.walletInr,
+      positions: updated.positions,
+    });
+  } catch (error) {
+    return res.status(400).json({ status: "error", message: error?.message || "Execute pending failed" });
   }
 });
 

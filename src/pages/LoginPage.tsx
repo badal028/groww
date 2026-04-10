@@ -4,6 +4,10 @@ import GrowwLogo from '@/components/GrowwLogo';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { isAdminEmail, isSignupAllowedEmail } from '@/lib/accountLabels';
+import { Eye, EyeOff } from 'lucide-react';
+
+const ACCESS_NOTICE =
+  'New sign-ups are limited. Please contact support for application access on instagram @optixtrade';
 
 const LoginPage: React.FC = () => {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -12,6 +16,7 @@ const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { login, signup } = useAuth();
 
@@ -73,11 +78,7 @@ const LoginPage: React.FC = () => {
         <h1 className="mb-1 text-2xl font-semibold text-foreground">
           {mode === 'login' ? 'Welcome back' : 'Create account'}
         </h1>
-        <p className="mb-6 text-sm text-muted-foreground">
-          {mode === 'login'
-            ? 'Login to continue earning'
-            : 'New sign-ups are limited. Please contact support for application access on instagram @optixtrade'}
-        </p>
+        <p className="mb-6 text-sm text-muted-foreground">{ACCESS_NOTICE}</p>
 
         <form onSubmit={handleSubmit} className="space-y-3">
           {mode === 'signup' && (
@@ -97,14 +98,25 @@ const LoginPage: React.FC = () => {
             className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground"
             required
           />
-          <input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            type="password"
-            className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground"
-            required
-          />
+          <div className="relative">
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              type={showPassword ? 'text' : 'password'}
+              className="h-11 w-full rounded-lg border border-border bg-card py-0 pr-11 pl-3 text-sm text-foreground"
+              required
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
 
           {error && <p className="text-sm text-loss">{error}</p>}
 

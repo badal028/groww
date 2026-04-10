@@ -28,12 +28,14 @@ export interface MarketIndex {
   value: number;
   change: number;
   changePercent: number;
+  /** Index F&O expiry calendar day (YYYY-MM-DD). "Expiry" tag shows only on this day (IST). */
+  foExpiryIso?: string;
 }
 
 export const marketIndices: MarketIndex[] = [
-  { name: "NIFTY 50", value: 24194.50, change: -27.40, changePercent: -0.11 },
-  { name: "BANK NIFTY", value: 52191.50, change: -16.00, changePercent: -0.03 },
-  { name: "SENSEX", value: 79486.32, change: -100.20, changePercent: -0.13 },
+  { name: "NIFTY 50", value: 24194.50, change: -27.40, changePercent: -0.11, foExpiryIso: "2026-04-15" },
+  { name: "BANK NIFTY", value: 52191.50, change: -16.00, changePercent: -0.03, foExpiryIso: "2026-04-15" },
+  { name: "SENSEX", value: 79486.32, change: -100.20, changePercent: -0.13, foExpiryIso: "2026-04-16" },
 ];
 
 export const popularStocks: Stock[] = [

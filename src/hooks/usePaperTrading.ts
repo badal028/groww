@@ -14,6 +14,8 @@ type OrderPayload = {
   product?: "NRML" | "MIS";
   /** Kite stream key (e.g. NFO:NIFTY25MAR23050PE) for live P&amp;L on positions */
   kiteSymbol?: string;
+  /** SELL LIMIT: queue until LTP crosses limit, then fill (paper). */
+  deferUntilTouch?: boolean;
 };
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";

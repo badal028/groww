@@ -18,7 +18,8 @@ export type PaperOrder = {
   product: string;
   notional: number;
   status: string;
-  filledAt: string;
+  filledAt: string | null;
+  kiteSymbol?: string;
 };
 
 export function usePaperOrders() {

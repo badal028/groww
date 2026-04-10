@@ -20,6 +20,7 @@ import PositionActionSheet from "@/components/PositionActionSheet";
 import FoTradeModal from "@/components/fo/FoTradeModal";
 import FoOptionChainModal, { type FoContract } from "@/components/fo/FoOptionChainModal";
 import { showSellOrderExecutedToast } from "@/utils/tradingToasts";
+import { formatFoUnderlyingDisplay } from "@/lib/foDisplaySymbol";
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
 
@@ -44,7 +45,7 @@ function formatPositionTitle(p: PaperPosition): string {
     const day = d.getUTCDate();
     const mon = d.toLocaleString("en-IN", { month: "short", timeZone: "UTC" });
     const opt = p.optionType === "CE" ? "Call" : "Put";
-    return `${p.symbol} ${day} ${mon} ${p.strike} ${opt}`;
+    return `${formatFoUnderlyingDisplay(p.symbol)} ${day} ${mon} ${p.strike} ${opt}`;
   }
   return p.symbol;
 }
@@ -62,7 +63,7 @@ function positionToFoContract(p: PaperPosition, mkt: number): FoContract | null 
   const day = d.getUTCDate();
   const mon = d.toLocaleString("en-IN", { month: "short", timeZone: "UTC" });
   const opt = p.optionType === "CE" ? "Call" : "Put";
-  const label = `${p.symbol} ${day} ${mon} ${p.strike} ${opt}`;
+  const label = `${formatFoUnderlyingDisplay(p.symbol)} ${day} ${mon} ${p.strike} ${opt}`;
   return {
     id: p.instrumentKey,
     underlyingSymbol: p.symbol,
@@ -319,8 +320,10 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
       {/* List */}
       <div
         className={cn(
-          " border-0 bg-card dark:bg-[#0F1012]",
-          compact ? "min-h-0 flex-1 overflow-y-auto scrollbar-hide  pb-20" : "overflow-hidden",
+          "border-0",
+          compact
+            ? "min-h-0 flex-1 overflow-y-auto scrollbar-hide bg-background pb-20 dark:bg-[#0F1012]"
+            : "overflow-hidden bg-card dark:bg-[#0F1012]",
         )}
       >
         {rows.map(({ p, mkt, pnl }) => {

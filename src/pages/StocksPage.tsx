@@ -31,7 +31,9 @@ import { usePaperPositions } from '@/hooks/usePaperPositions';
 import PositionsPanel from '@/components/PositionsPanel';
 import { useAuth } from '@/hooks/useAuth';
 import { usePaperOrders } from '@/hooks/usePaperOrders';
+import { usePendingLimitSellExecution } from '@/hooks/usePendingLimitSellExecution';
 import OrdersPanel from '@/components/OrdersPanel';
+import { isFoExpiryTagVisible } from '@/lib/indexFoExpiry';
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || 'http://127.0.0.1:3001';
 
@@ -70,6 +72,7 @@ const StocksPage: React.FC = () => {
   const { indices: liveIndices } = useLiveIndices(marketIndices);
   const { positions, loading: positionsLoading } = usePaperPositions();
   const { orders, loading: ordersLoading } = usePaperOrders();
+  usePendingLimitSellExecution(orders);
   const { user, logout } = useAuth();
   const desktopTopTabs = ['Explore', 'Positions', 'Orders', 'All Watchlists', 'Holdings'];
   const mobileTopTabs = ['Explore', 'Positions', 'Orders', 'All Watchlists', 'Holdings', 'ETF'];
@@ -170,13 +173,23 @@ const StocksPage: React.FC = () => {
               onClick={() => navigate(`/stock/${encodeURIComponent(index.name)}`)}
               className="w-[230px] min-w-[200px] max-w-[230px] flex-shrink-0 rounded-lg border border-border bg-card px-4 py-2.5 text-left transition-colors hover:border-primary/30"
             >
-              <p className="truncate text-xs font-medium text-muted-foreground">{index.name}</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">{index.name}</p>
+                {index.foExpiryIso && isFoExpiryTagVisible(index.foExpiryIso) ? (
+                  <span
+                    className="shrink-0 rounded-md bg-[#eef1f5] px-2 py-0.5 text-[10px] font-medium leading-none text-[#6b7074] dark:bg-[#1E2225] dark:text-[#94989B]"
+                    title={index.foExpiryIso}
+                  >
+                    Expiry
+                  </span>
+                ) : null}
+              </div>
               <div className="mt-0.5 flex flex-nowrap items-baseline gap-1.5 overflow-x-auto scrollbar-hide">
-                <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                <span className="shrink-0 text-[0.75rem] font-semibold tabular-nums text-foreground">
                   {index.value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </span>
                 <span
-                  className={`shrink-0 whitespace-nowrap text-xs font-medium tabular-nums ${index.change >= 0 ? 'text-profit' : 'text-loss'}`}
+                  className={`shrink-0 whitespace-nowrap text-[0.75rem] font-medium tabular-nums ${index.change >= 0 ? 'text-profit' : 'text-loss'}`}
                 >
                   {index.change >= 0 ? '+' : ''}
                   {index.change.toFixed(2)} ({index.changePercent.toFixed(2)}%)
@@ -380,11 +393,19 @@ const StocksPage: React.FC = () => {
                 <span className="max-w-[8rem] shrink-0 truncate font-semibold text-foreground">
                   {index.name.toUpperCase()}
                 </span>
-                <span className="shrink-0 whitespace-nowrap text-foreground">
+                {index.foExpiryIso && isFoExpiryTagVisible(index.foExpiryIso) ? (
+                  <span
+                    className="shrink-0 rounded-md bg-[#eef1f5] px-2 py-0.5 text-[10px] font-medium leading-none text-[#6b7074] dark:bg-[#1E2225] dark:text-[#94989B]"
+                    title={index.foExpiryIso}
+                  >
+                    Expiry
+                  </span>
+                ) : null}
+                <span className="shrink-0 whitespace-nowrap text-[0.75rem] text-foreground">
                   {index.value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </span>
                 <span
-                  className={`shrink-0 whitespace-nowrap font-medium ${index.change >= 0 ? 'text-profit' : 'text-loss'}`}
+                  className={`shrink-0 whitespace-nowrap text-[0.75rem] font-medium ${index.change >= 0 ? 'text-profit' : 'text-loss'}`}
                 >
                   {index.change >= 0 ? '+' : ''}
                   {index.change.toFixed(2)} ({index.changePercent.toFixed(2)}%)

@@ -1,6 +1,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import type { PaperOrder } from "@/hooks/usePaperOrders";
+import { formatFoUnderlyingDisplay } from "@/lib/foDisplaySymbol";
 
 function formatOrderTitle(o: PaperOrder): string {
   if (o.instrumentType === "FO" && o.expiry && o.strike != null && o.optionType) {
@@ -8,7 +9,7 @@ function formatOrderTitle(o: PaperOrder): string {
     const day = d.getUTCDate();
     const mon = d.toLocaleString("en-IN", { month: "short", timeZone: "UTC" });
     const opt = o.optionType === "CE" ? "Call" : "Put";
-    return `${o.symbol} ${day} ${mon} ${o.strike} ${opt}`;
+    return `${formatFoUnderlyingDisplay(o.symbol)} ${day} ${mon} ${o.strike} ${opt}`;
   }
   return o.symbol;
 }
