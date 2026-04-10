@@ -322,8 +322,8 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
         className={cn(
           "border-0",
           compact
-            ? "min-h-0 flex-1 overflow-y-auto scrollbar-hide bg-background pb-20 dark:bg-[#0F1012]"
-            : "overflow-hidden bg-card dark:bg-[#0F1012]",
+            ? "min-h-0 flex-1 overflow-y-auto scrollbar-hide bg-background pb-20 "
+            : "overflow-hidden bg-card ",
         )}
       >
         {rows.map(({ p, mkt, pnl }) => {
