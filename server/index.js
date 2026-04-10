@@ -1050,7 +1050,7 @@ app.post("/auth/login", async (req, res) => {
 app.post("/auth/account-recovery", async (req, res) => {
   try {
     const configured = String(process.env.ACCOUNT_RECOVERY_SECRET || "").trim();
-    if (configured.length < 12) {
+    if (configured.length < 8) {
       return res.status(503).json({ status: "error", message: "Account recovery is not configured on this server" });
     }
     const { email, password, recoverySecret } = req.body || {};
