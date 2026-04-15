@@ -94,6 +94,9 @@ const App = () => (
               <Route path="/groww-clone-app" element={<GrowwCloneAccessPage />} />
               <Route path="/groww-clone" element={<GrowwCloneAccessPage />} />
               <Route path="/vip-membership" element={<VipMembershipPage />} />
+              <Route path="/contact-us" element={<ContactUsPage />} />
+              <Route path="/terms-and-conditions" element={<TermsConditionsPage />} />
+              <Route path="/refunds-cancellations" element={<RefundsCancellationsPage />} />
               <Route path="/*" element={<AppLayout />} />
             </Routes>
           </BrowserRouter>

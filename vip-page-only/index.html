@@ -81,6 +81,15 @@
       .review-stars { color: #f59e0b; font-size: 12px; margin-bottom: 8px; }
       .review-text { font-size: 12px; color: var(--muted); line-height: 1.6; font-style: italic; margin-bottom: 10px; }
       .review-author { font-size: 12px; font-weight: 700; }
+      .desktop-only-info { background: var(--white); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--card-shadow); padding: 20px 22px; }
+      .desktop-only-info h3 { font-size: 16px; font-weight: 800; margin-bottom: 14px; }
+      .policy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .policy-item { background: #f9fafb; border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+      .policy-item h4 { font-size: 13px; font-weight: 800; margin-bottom: 8px; }
+      .policy-item p { font-size: 12px; color: var(--muted); line-height: 1.6; }
+      .site-footer { width: 100%; background: #111827; color: #e5e7eb; margin-top: 26px; border-top: 1px solid #1f2937; }
+      .footer-inner { max-width: 1200px; margin: 0 auto; padding: 16px; font-size: 12px; line-height: 1.7; }
+      .footer-title { font-size: 13px; font-weight: 800; color: #fff; margin-bottom: 4px; }
 
       @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
       @media (max-width: 768px) {
@@ -92,6 +101,7 @@
         .trust-bar { display: none; }
         .features-row { grid-template-columns: repeat(2, 1fr); }
         .reviews-grid { grid-template-columns: 1fr; }
+        .desktop-only-info { display: none; }
         .popular-tag { position: static; display: inline-block; margin-bottom: 8px; }
         .plan-row { display: block; }
         .buy-btn { margin-top: 12px; width: 100%; }
@@ -167,7 +177,7 @@
               <div class="plan-price-row"><div class="plan-price">₹2,288.00</div><div class="plan-per">/ 1 Month</div></div>
               <div class="plan-active">1,317 members active</div>
             </div>
-            <a class="buy-btn" target="_blank" rel="noreferrer" href="https://payments.cashfree.com/forms/optix-vip-1m">Buy Now</a>
+            <a href="https://www.instamojo.com/@pbadal392/l2b5a9f593f754d028fcefe483280f943/" rel="im-checkout" data-text="Pay" data-css-style="color:#ffffff; background:#75c26a; width:300px; border-radius:4px" data-layout="vertical"></a>
           </div>
 
           <div class="plan-row">
@@ -176,16 +186,16 @@
               <div class="plan-price-row"><div class="plan-price">₹2,600.00</div><div class="plan-per">/ 2 Months</div></div>
               <div class="plan-active">933 members active</div>
             </div>
-            <a class="buy-btn" target="_blank" rel="noreferrer" href="https://payments.cashfree.com/forms/optix-vip-2m">Buy Now</a>
+            <a class="buy-btn" target="_blank" rel="noreferrer" href="https://rzp.io/rzp/2monthvip">Buy Now</a>
           </div>
 
           <div class="plan-row">
             <div>
               <div class="plan-name">Quarterly Plan</div>
-              <div class="plan-price-row"><div class="plan-price">₹2,808.00</div><div class="plan-per">/ 3 Months</div></div>
+              <div class="plan-price-row"><div class="plan-price">₹3,100.00</div><div class="plan-per">/ 3 Months</div></div>
               <div class="plan-active">2,174 members active</div>
             </div>
-            <a class="buy-btn" target="_blank" rel="noreferrer" href="https://payments.cashfree.com/forms/optix-vip-3m">Buy Now</a>
+            <a class="buy-btn" target="_blank" rel="noreferrer" href="https://rzp.io/rzp/quartervip">Buy Now</a>
           </div>
 
           <div class="plan-row">
@@ -194,7 +204,7 @@
               <div class="plan-price-row"><div class="plan-price">₹3,640.00</div><div class="plan-per">/ 12 Months</div></div>
               <div class="plan-active">1,004 members active</div>
             </div>
-            <a class="buy-btn" target="_blank" rel="noreferrer" href="https://payments.cashfree.com/forms/optix_vip_1y">Buy Now</a>
+            <a class="buy-btn" target="_blank" rel="noreferrer" href="https://rzp.io/rzp/yearvip">Buy Now</a>
           </div>
 
           <div class="plan-row popular">
@@ -204,7 +214,7 @@
               <div class="plan-price-row"><div class="plan-price">₹4,680.00</div><div class="plan-per">/ Life time</div></div>
               <div class="plan-active">4,451 members active</div>
             </div>
-            <a class="buy-btn" target="_blank" rel="noreferrer" href="https://payments.cashfree.com/forms/optix-vip-life">Buy Now</a>
+            <a class="buy-btn" target="_blank" rel="noreferrer" href="https://rzp.io/rzp/lifetimevip01">Buy Now</a>
           </div>
         </div>
 
@@ -218,13 +228,52 @@
         <div class="reviews-card">
           <h3 style="font-size:16px;font-weight:800;margin-bottom:16px;">What Members Say</h3>
           <div class="reviews-grid">
-            <div class="review-item"><div class="review-stars">★★★★★</div><p class="review-text">"Signals are incredibly accurate. Made ₹42,000 profit in my very first month! Best trading community I've joined."</p><div class="review-author">- Ravi K., Mumbai</div></div>
+            <div class="review-item"><div class="review-stars">★★★★★</div><p class="review-text">"Signals are incredibly accurate. Made in my very first month! Best trading community I've joined."</p><div class="review-author">- Ravi K., Mumbai</div></div>
             <div class="review-item"><div class="review-stars">★★★★★</div><p class="review-text">"Education content is worth 10x the price. Went from beginner to confident trader in just 3 months!"</p><div class="review-author">- Priya S., Delhi</div></div>
             <div class="review-item"><div class="review-stars">★★★★★</div><p class="review-text">"Always responsive in the VIP group. Live weekend sessions are extremely valuable. Everyone should join!"</p><div class="review-author">- Aakash T., Pune</div></div>
             <div class="review-item"><div class="review-stars">★★★★★</div><p class="review-text">"Yearly plan is the best value for money. Consistent signals, excellent support. Worth every rupee!"</p><div class="review-author">- Suman R., Bangalore</div></div>
           </div>
         </div>
+
+        <div class="desktop-only-info">
+          <h3>Business & Policy Information</h3>
+          <div class="policy-grid">
+            <div class="policy-item">
+              <h4>About Us</h4>
+              <p>VIP Premium Membership is a digital platform operated by BADAL PRAJAPATI, providing access to premium content and services.</p>
+            </div>
+            <div class="policy-item">
+              <h4>Contact Us</h4>
+              <p>Email: pbadal392@gmail.com<br />Phone: 7016394406<br />Address: 20 motibag soc, opp trishul soc, bhaduatnagar, maninagar, ahmedabad, gujarat</p>
+            </div>
+            <div class="policy-item">
+              <h4>Privacy Policy</h4>
+              <p>We respect your privacy and do not share your personal data with third parties.</p>
+            </div>
+            <div class="policy-item">
+              <h4>Terms &amp; Conditions</h4>
+              <p>All payments are final. Access will be provided after successful payment.</p>
+            </div>
+            <div class="policy-item">
+              <h4>Refund Policy</h4>
+              <p>No refunds will be provided once access is granted.</p>
+            </div>
+            <div class="policy-item">
+              <h4>Payment Flow</h4>
+              <p>Users can select a plan and complete payment via secure payment links. Access is provided manually after payment confirmation.</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-title">Contact Us</div>
+        <div>Email: pbadal392@gmail.com</div>
+        <div>Phone: 7016394406</div>
+        <div>Address: 20 motibag soc, opp trishul soc, bhaduatnagar, maninagar, ahmedabad, gujarat</div>
+      </div>
+    </footer>
+    <script src="https://js.instamojo.com/v1/button.js"></script>
   </body>
   </html>
