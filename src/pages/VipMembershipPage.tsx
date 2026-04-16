@@ -17,10 +17,10 @@ const plans: Plan[] = [
 ];
 
 const reviews = [
-  { text: `"Signals are incredibly accurate. Made ₹42,000 profit in my very first month! Best trading community I've joined."`, by: "Ravi K., Mumbai" },
-  { text: `"Education content is worth 10x the price. Went from beginner to confident trader in just 3 months!"`, by: "Priya S., Delhi" },
-  { text: `"Always responsive in the VIP group. Live weekend sessions are extremely valuable. Everyone should join!"`, by: "Aakash T., Pune" },
-  { text: `"Yearly plan is the best value for money. Consistent signals, excellent support. Worth every rupee!"`, by: "Suman R., Bangalore" },
+  { text: `"Great learning experience and helpful trading community."`, by: "Ravi K., Mumbai" },
+  { text: `"Great learning experience and helpful trading community."`, by: "Priya S., Delhi" },
+  { text: `"Great learning experience and helpful trading community."`, by: "Aakash T., Pune" },
+  { text: `"Great learning experience and helpful trading community."`, by: "Suman R., Bangalore" },
 ];
 
 function isValidCashfreeLink(url: string): boolean {
@@ -120,11 +120,16 @@ export default function VipMembershipPage() {
             <div className="disc-box">
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Disclaimer</div>
               <p>
-                Join our exclusive VIP Membership to unlock premium features, expert insights, and high-value content designed
-                to help you grow faster and smarter.
+                Join our VIP membership to access exclusive trading education, market insights, and a private community
+                designed to help you learn and grow as a trader.
               </p>
               <p style={{ marginTop: 8 }}>
-                No demo/trial. Refund policy not available. Pay via link and send screenshot for manual premium-group approval.
+                Disclaimer: This platform is for educational purposes only. We do not provide financial or investment advice.
+                We do not guarantee any profits. Trading involves risk and you may lose money.
+              </p>
+              <p style={{ marginTop: 8 }}>
+                Refunds may be considered in case of technical issues or duplicate payments within 24 hours. Access will be
+                automatically granted after successful payment.
               </p>
             </div>
           </div>
@@ -176,9 +181,9 @@ export default function VipMembershipPage() {
           </div>
 
           <div className="features-row">
-            <div className="feat-item"><div style={{ fontSize: 26 }}>Live</div><div style={{ fontSize: 13, fontWeight: 700 }}>Live Signals</div><div style={{ fontSize: 11, color: "#6B7280" }}>Real-time alerts</div></div>
+            <div className="feat-item"><div style={{ fontSize: 26 }}>Live</div><div style={{ fontSize: 13, fontWeight: 700 }}>Market Analysis</div><div style={{ fontSize: 11, color: "#6B7280" }}>Educational insights</div></div>
             <div className="feat-item"><div style={{ fontSize: 26 }}>Edu</div><div style={{ fontSize: 13, fontWeight: 700 }}>Education</div><div style={{ fontSize: 11, color: "#6B7280" }}>Expert sessions</div></div>
-            <div className="feat-item"><div style={{ fontSize: 26 }}>VIP</div><div style={{ fontSize: 13, fontWeight: 700 }}>VIP Group</div><div style={{ fontSize: 11, color: "#6B7280" }}>Private Telegram</div></div>
+            <div className="feat-item"><div style={{ fontSize: 26 }}>VIP</div><div style={{ fontSize: 13, fontWeight: 700 }}>Trade Discussions</div><div style={{ fontSize: 11, color: "#6B7280" }}>Private community</div></div>
             <div className="feat-item"><div style={{ fontSize: 26 }}>SSL</div><div style={{ fontSize: 13, fontWeight: 700 }}>Secure Pay</div><div style={{ fontSize: 11, color: "#6B7280" }}>256-bit SSL</div></div>
           </div>
 
