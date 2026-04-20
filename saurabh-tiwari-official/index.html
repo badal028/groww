@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Saurabh Tiwari OFFICIAL</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Clash+Display:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <!-- fallback if Clash Display not available -->
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --gold:      #F5A623;
+      --gold-soft: #F5A62322;
+      --gold-mid:  #F5A62344;
+      --green:     #1DB954;
+      --green-soft:#1DB95420;
+      --blue:      #2AABEE;
+      --blue-soft: #2AABEE18;
+      --orange:    #FF6B35;
+      --orange-soft:#FF6B3518;
+      --bg:        #080B12;
+      --card:      #0D1117;
+      --card2:     #111520;
+      --line:      #ffffff0d;
+      --t1:        #F0F2F7;
+      --t2:        #8892A4;
+      --t3:        #4A5568;
+    }
+
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      background: var(--bg);
+      color: var(--t1);
+      font-family: 'Manrope', 'Inter', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* subtle dot grid */
+    body::before {
+      content:'';
+      position:fixed; inset:0;
+      background-image: radial-gradient(circle, #ffffff06 1px, transparent 1px);
+      background-size: 28px 28px;
+      pointer-events:none; z-index:0;
+    }
+
+    /* ─── TICKER ─── */
+    .ticker {
+      background: #0A0D14;
+      border-bottom: 1px solid var(--line);
+      overflow: hidden;
+      padding: 8px 0;
+      white-space: nowrap;
+    }
+    .ticker-inner {
+      display: inline-flex;
+      align-items: center;
+      animation: marquee 24s linear infinite;
+    }
+    .tick {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--t3);
+      text-transform: uppercase;
+      padding: 0 22px;
+    }
+    .tick.up   { color: var(--green); }
+    .tick.gold { color: var(--gold);  }
+    .tick-sep { color: #ffffff10; padding: 0 4px; }
+    @keyframes marquee {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    /* ─── PAGE ─── */
+    .page {
+      position: relative; z-index:1;
+      max-width: 390px;
+      margin: 0 auto;
+      padding: 0 18px 56px;
+    }
+
+    /* ─── TOP LOGO ─── */
+    .top {
+      padding: 32px 0 20px;
+      text-align: center;
+      animation: fadeIn 0.6s ease both;
+    }
+
+    .brand-logo-wrap {
+      position: relative;
+      display: inline-block;
+      width: 104px;
+      height: 104px;
+      margin-bottom: 14px;
+      vertical-align: top;
+    }
+
+    .brand-logo {
+      width: 104px;
+      height: 104px;
+      border-radius: 50%;
+      object-fit: cover;
+      display: block;
+      box-shadow: 0 4px 14px #F5A62340;
+      border: 1px solid #F5A62330;
+    }
+
+    .verified-img {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 30px;
+      height: auto;
+      max-height: 30px;
+      object-fit: contain;
+      pointer-events: none;
+      filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+    }
+
+    .brand-name {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      color: var(--t1);
+      line-height: 1.25;
+      margin-bottom: 10px;
+    }
+    .brand-name span {
+      color: var(--gold);
+    }
+
+    .tagline {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--t2);
+      line-height: 1.65;
+      letter-spacing: 0.01em;
+    }
+    .tagline strong {
+      color: #c08830;
+      font-weight: 500;
+    }
+
+    /* ─── STATS ─── */
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 20px 0 8px;
+      animation: slideUp 0.5s 0.12s ease both;
+    }
+
+    .stat {
+      border-radius: 14px;
+      padding: 18px 14px 16px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* shimmer top line */
+    .stat::before {
+      content:'';
+      position: absolute;
+      top: 0; left: 10%; right: 10%;
+      height: 1px;
+    }
+
+    .stat-a {
+      background: #0D1624;
+      border: 1px solid #F5A62320;
+    }
+    .stat-a::before {
+      background: linear-gradient(90deg, transparent, #F5A62388, transparent);
+    }
+
+    .stat-b {
+      background: #0A1510;
+      border: 1px solid #1DB95420;
+    }
+    .stat-b::before {
+      background: linear-gradient(90deg, transparent, #1DB95470, transparent);
+    }
+
+    .stat-num {
+      font-family: 'Space Grotesk', 'Manrope', sans-serif;
+      font-size: 30px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -1px;
+      color: var(--gold);
+      margin-bottom: 4px;
+    }
+    /* subtle text shadow for depth */
+    .stat-num { text-shadow: 0 0 40px #F5A62350; }
+
+    .stat-tag {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #F5A62360;
+    }
+
+    /* right stat */
+    .daily-word {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      text-transform: none;
+      color: var(--green);
+      margin-bottom: 6px;
+      line-height: 1;
+      text-shadow: 0 0 28px #1DB95445;
+    }
+    .profit-word {
+      font-family: 'Manrope', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      line-height: 1.2;
+      color: #1DB954a0;
+    }
+
+    /* ─── TELEGRAM ─── */
+    .tg {
+      animation: slideUp 0.5s 0.26s ease both;
+      margin-bottom: 10px;
+    }
+    .tg-btn {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 14px 16px;
+      background: linear-gradient(110deg, #0E4F8B 0%, #1A7CC4 55%, #2AABEE 100%);
+      border: none;
+      border-radius: 14px;
+      text-decoration: none;
+      color: #fff;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 8px 28px #2AABEE28, inset 0 1px 0 #ffffff18;
+      transition: transform 0.15s ease;
+    }
+    .tg-btn:active { transform: scale(0.98); }
+
+    /* gloss shimmer */
+    .tg-btn::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 50%;
+      background: linear-gradient(180deg, #ffffff12, transparent);
+      border-radius: 14px 14px 0 0;
+      pointer-events: none;
+    }
+    .tg-btn::after {
+      content: '';
+      position: absolute;
+      top: 0; left: -80%;
+      width: 60%; height: 100%;
+      background: linear-gradient(90deg, transparent, #ffffff14, transparent);
+      animation: sweep 2.8s ease-in-out 1.2s infinite;
+    }
+    @keyframes sweep { 0%{left:-80%} 100%{left:140%} }
+
+    .tg-ico {
+      width: 34px; height: 34px;
+      background: #ffffff18;
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .tg-txt { flex: 1; }
+    .tg-main {
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.1px;
+    }
+    .tg-caret {
+      font-size: 20px;
+      opacity: 0.5;
+      font-weight: 300;
+      flex-shrink: 0;
+    }
+
+    /* ─── FIRE STRIP + OPTIONS CTA ─── */
+    .fire-wrap {
+      animation: slideUp 0.5s 0.34s ease both;
+      margin-top: 4px;
+    }
+    .fire-rule {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .fire-rule-line {
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #FF6B3550, transparent);
+    }
+    .fire-rule-text {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      color: #FF6B35a0;
+      white-space: nowrap;
+    }
+    .free-calls-btn {
+      display: block;
+      width: 100%;
+      text-align: center;
+      padding: 14px 16px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #0c0a08;
+      background: linear-gradient(135deg, #FF6B35, #FB923C);
+      border: 1px solid #fdba7440;
+      box-shadow: 0 8px 24px #ff6b3528;
+      transition: transform 0.15s ease;
+    }
+    .free-calls-btn:active { transform: scale(0.98); }
+
+    /* ─── FOOTER ─── */
+    .foot {
+      margin-top: 28px;
+      text-align: center;
+      animation: slideUp 0.5s 0.44s ease both;
+    }
+    .foot-hr {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #F5A62320, transparent);
+      margin-bottom: 14px;
+    }
+    .foot-txt {
+      font-size: 9px;
+      font-weight: 500;
+      color: var(--t3);
+      letter-spacing: 0.04em;
+      line-height: 1.9;
+    }
+
+    /* ─── ANIMATIONS ─── */
+    @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
+    @keyframes slideUp { from{opacity:0; transform:translateY(16px)} to{opacity:1; transform:none} }
+  </style>
+</head>
+<body>
+
+<!-- TICKER -->
+<div class="ticker">
+  <div class="ticker-inner">
+    <span class="tick up">📈 NIFTY <b>+1.2%</b></span>
+    <span class="tick-sep">·</span>
+    <span class="tick up">🔥 BANKNIFTY CE <b>+340%</b></span>
+    <span class="tick-sep">·</span>
+    <span class="tick up">⚡ RELIANCE <b>+2.8%</b></span>
+    <span class="tick-sep">·</span>
+    <span class="tick">🎯 OPTIONS IDEAS</span>
+    <span class="tick-sep">·</span>
+    <!-- duplicate for seamless loop -->
+    <span class="tick up">📈 NIFTY <b>+1.2%</b></span>
+    <span class="tick-sep">·</span>
+    <span class="tick up">🔥 BANKNIFTY CE <b>+340%</b></span>
+    <span class="tick-sep">·</span>
+    <span class="tick up">⚡ RELIANCE <b>+2.8%</b></span>
+    <span class="tick-sep">·</span>
+    <span class="tick">🎯 OPTIONS IDEAS</span>
+    <span class="tick-sep">·</span>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- TOP LOGO -->
+  <div class="top">
+    <div class="brand-logo-wrap">
+      <img src="logo.png" alt="" class="brand-logo" width="104" height="104" decoding="async"/>
+      <img src="verified.png" alt="" class="verified-img" width="96" height="96" decoding="async"/>
+    </div>
+    <div class="brand-name">Saurabh Tiwari <span>OFFICIAL</span></div>
+    <p class="tagline">
+      Premium stock market insight &amp;<br>
+      <strong>option trading strategies</strong>
+    </p>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat stat-a">
+      <div class="stat-num">96%</div>
+      <div class="stat-tag">Accuracy</div>
+    </div>
+    <div class="stat stat-b">
+      <div class="daily-word">Daily</div>
+      <div class="profit-word">Profits</div>
+    </div>
+  </div>
+
+  <!-- TELEGRAM -->
+  <div class="tg">
+    <a href="https://t.me/premiumsubscription10" class="tg-btn" target="_blank" rel="noopener noreferrer">
+      <div class="tg-ico">✈️</div>
+      <div class="tg-txt">
+        <div class="tg-main">Join Telegram Now</div>
+      </div>
+      <div class="tg-caret">›</div>
+    </a>
+  </div>
+
+  <!-- FIRE TRADES STRIP -->
+  <div class="fire-wrap">
+    <div class="fire-rule">
+      <span class="fire-rule-line" aria-hidden="true"></span>
+      <span class="fire-rule-text">FIRE TRADES ONLY</span>
+      <span class="fire-rule-line" aria-hidden="true"></span>
+    </div>
+    <a href="https://t.me/premiumsubscription10" class="free-calls-btn" target="_blank" rel="noopener noreferrer">Get free OPTIONS CALLS</a>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="foot">
+    <div class="foot-hr"></div>
+    <div class="foot-txt">
+   
+      © 2025 Saurabh Tiwari OFFICIAL · All rights reserved.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
