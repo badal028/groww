@@ -145,5 +145,25 @@ For localhost, register **both** (see [README](./README.md) Google section):
 
 Production URI `https://growwtrader.in/auth/google/callback` can stay in the same OAuth client alongside these.
 
+---
+
+## 8. PWA + Android APK
+
+App icons live in `android/`, `ios/`, and `windows/` at the repo root. Build copies Android icons into `public/icons/android/` and registers a service worker via `vite-plugin-pwa`.
+
+**Install page (share with users):** `https://growwtrader.in/groww-clone-apk`
+
+**After deploy:** Chrome on Android may show **Install app**. iPhone users use Safari → Add to Home Screen.
+
+**Generate APK (one time):**
+
+1. Deploy so `https://growwtrader.in` serves the new build (manifest + icons + `sw.js`).
+2. Open [https://www.pwabuilder.com](https://www.pwabuilder.com) → enter `https://growwtrader.in`.
+3. Package for Android → download signed APK.
+4. Upload to the server: `public/downloads/growwtrader.apk` (served as `https://growwtrader.in/downloads/growwtrader.apk`).
+5. The download button on `/groww-clone-apk` appears automatically when that file exists.
+
+Use package name e.g. `in.growwtrader.app`. Keep the signing keystore safe for future APK updates.
+
 cd D:\Cloner\groww-clone-studio
 ssh -i "C:\Users\badal\Downloads\ssh-key-2026-03-20.key" ubuntu@141.148.217.18'

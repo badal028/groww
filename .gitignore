@@ -26,3 +26,6 @@ server/data/kiteAuth.json
 *.njsproj
 *.sln
 *.sw?
+
+# Generated APK (upload to server manually, do not commit)
+public/downloads/*.apk

@@ -23,8 +23,8 @@ const reviews = [
   { text: `"Great learning experience and helpful trading community."`, by: "Suman R., Bangalore" },
 ];
 
-function isValidCashfreeLink(url: string): boolean {
-  return /^https:\/\/payments\.cashfree\.com\/links(\?code=[A-Za-z0-9_-]+|\/(?!replace-)[A-Za-z0-9_-]+)$/i.test(String(url || "").trim());
+function isValidPaymentLink(url: string): boolean {
+  return /^https:\/\/onetapay\.com\/pp\/[A-Za-z0-9+/=]+$/i.test(String(url || "").trim());
 }
 
 export default function VipMembershipPage() {
@@ -167,7 +167,7 @@ export default function VipMembershipPage() {
                   </div>
                   <div className="plan-active">{plan.activeMembers}</div>
                 </div>
-                {isValidCashfreeLink(plan.payUrl) ? (
+                {isValidPaymentLink(plan.payUrl) ? (
                   <a href={plan.payUrl} target="_blank" rel="noreferrer" className="buy-btn">
                     Buy Now
                   </a>
