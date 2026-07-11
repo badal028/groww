@@ -2710,6 +2710,43 @@ app.post("/paper/position/close", authMiddleware, (req, res) => {
   }
 });
 
+/** Remove an exited position from the list and subtract its realized P&L from running total. */
+app.post("/paper/position/dismiss", authMiddleware, (req, res) => {
+  try {
+    const { instrumentKey } = req.body || {};
+    if (!instrumentKey || typeof instrumentKey !== "string") {
+      return res.status(400).json({ status: "error", message: "instrumentKey is required" });
+    }
+    let lineRealizedOut = 0;
+    const updated = updateUser(req.user.id, (prev) => {
+      const positions = prev.positions || [];
+      const idx = positions.findIndex((p) => p.instrumentKey === instrumentKey);
+      if (idx === -1) throw new Error("Position not found");
+      const pos = positions[idx];
+      if (!pos?.exited) throw new Error("Exit the position before clearing it from the list");
+      const lineRealized = Number(pos.realizedPnlInr || 0);
+      lineRealizedOut = lineRealized;
+      const next = positions.filter((_, i) => i !== idx);
+      const prevRealized = Number(prev.realizedPnlInr || 0);
+      return {
+        ...prev,
+        positions: next,
+        realizedPnlInr: Number((prevRealized - lineRealized).toFixed(2)),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    if (!updated) return res.status(404).json({ status: "error", message: "User not found" });
+    return res.json({
+      status: "ok",
+      lineRealized: lineRealizedOut,
+      realizedPnlInr: Number(updated.realizedPnlInr || 0),
+      positions: pruneExitedPositionsBeforeToday(updated.positions || []),
+    });
+  } catch (error) {
+    return res.status(400).json({ status: "error", message: error?.message || "Dismiss failed" });
+  }
+});
+
 app.post("/paper/order", authMiddleware, (req, res) => {
   try {
     const email = String(req.user?.email || "")

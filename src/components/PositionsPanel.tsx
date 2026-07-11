@@ -116,6 +116,7 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
   const navigate = useNavigate();
   const { token, refreshMe } = useAuth();
   const [exitingKey, setExitingKey] = useState<string | null>(null);
+  const [clearingKey, setClearingKey] = useState<string | null>(null);
   const { mktByInstrumentKey } = usePositionMktPrices(positions);
   const [sheetCtx, setSheetCtx] = useState<{ p: PaperPosition; mkt: number; pnl: number } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -181,6 +182,36 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
         toast.error(err instanceof Error ? err.message : "Exit failed");
       } finally {
         setExitingKey(null);
+      }
+    },
+    [token, refreshMe],
+  );
+
+  const clearPosition = useCallback(
+    async (instrumentKey: string) => {
+      if (!token) {
+        toast.error("Sign in to clear positions");
+        return;
+      }
+      setClearingKey(instrumentKey);
+      try {
+        const res = await fetch(`${apiBase}/paper/position/dismiss`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ instrumentKey }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.message || "Could not clear position");
+        toast.success("Position cleared");
+        await refreshMe();
+        window.dispatchEvent(new Event(PAPER_POSITIONS_REFRESH_EVENT));
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Clear failed");
+      } finally {
+        setClearingKey(null);
       }
     },
     [token, refreshMe],
@@ -348,10 +379,25 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
                     </button>
                   )}
                   {p.exited ? (
-                    <span className="inline-flex items-center gap-0.5 rounded bg-profit/20 px-1.5 py-0.5 text-[10px] font-semibold text-profit">
-                      <span className="pt-[1px]">B</span>
-                      <ChevronRight className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
-                    </span>
+                    <>
+                      <button
+                        type="button"
+                        title="Remove from positions list"
+                        disabled={!token || clearingKey === p.instrumentKey}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void clearPosition(p.instrumentKey);
+                        }}
+                        className="inline-flex rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground hover:bg-muted disabled:opacity-40"
+                      >
+                        {clearingKey === p.instrumentKey ? "…" : "Clear"}
+                      </button>
+                      <span className="inline-flex items-center gap-0.5 rounded bg-profit/20 px-1.5 py-0.5 text-[10px] font-semibold text-profit">
+                        <span className="pt-[1px]">B</span>
+                        <ChevronRight className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+                      </span>
+                    </>
                   ) : (
                     <span className="inline-flex items-center gap-0.5 rounded-full bg-[#e8eaf6] px-2 py-0.5 text-[10px] font-medium text-[#5c5f8a] dark:bg-[#131D36] dark:text-[#9DA0D6]">
                       <span className="pt-[1px]">
@@ -385,9 +431,27 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
           return (
             <SwipeRevealExit
               key={p.instrumentKey}
-              enabled={Boolean(compact) && !p.exited}
-              disabled={!token || exitingKey === p.instrumentKey}
-              onExit={() => void exitPositionAt(p.instrumentKey, mkt, p)}
+              enabled={Boolean(compact)}
+              disabled={
+                !token ||
+                exitingKey === p.instrumentKey ||
+                clearingKey === p.instrumentKey
+              }
+              onExit={
+                !p.exited
+                  ? () => void exitPositionAt(p.instrumentKey, mkt, p)
+                  : undefined
+              }
+              onClear={() => {
+                if (!p.exited) {
+                  toast.message("Exit position first", {
+                    description: "Swipe left to exit, then swipe right to clear.",
+                  });
+                  return;
+                }
+                void clearPosition(p.instrumentKey);
+              }}
+              clearReady={Boolean(p.exited)}
               className="border-b border-border last:border-b-0"
             >
               <div
