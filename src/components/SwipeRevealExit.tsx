@@ -141,9 +141,9 @@ export default function SwipeRevealExit({
               onExit?.();
               close();
             }}
-            className="flex h-[88%] w-[56px] flex-col items-center justify-center gap-1 rounded-2xl bg-[#2C1811] px-2 py-2 text-[11px] font-medium text-[#FE9479] disabled:opacity-40"
+            className="flex h-[88%] w-[56px] flex-col items-center justify-center gap-1 rounded-2xl bg-[#fdf2ec] px-2 py-2 text-[11px] font-medium text-[#cd3d14] disabled:opacity-40 dark:bg-[#2C1811] dark:text-[#FE9479]"
           >
-            <Zap className="h-5 w-5 text-[#FE9479]" />
+            <Zap className="h-5 w-5 text-[#cd3d14] dark:text-[#FE9479]" />
             <span>Exit</span>
           </button>
         </div>
