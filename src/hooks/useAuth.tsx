@@ -12,7 +12,7 @@ type AuthUser = {
 };
 
 type LoginPayload = { email: string; password: string };
-type SignupPayload = { name: string; email: string; password: string };
+type SignupPayload = { name: string; email: string; password: string; emailVerificationToken?: string };
 
 type AuthResult = { ok: boolean; message?: string; user?: AuthUser | null };
 
@@ -135,16 +135,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       const data = await res.json();
       if (!res.ok) return { ok: false, message: data?.message || "Signup failed" };
-      // Server returns JWT + user on signup — log in immediately (same as login).
-      let nu: AuthUser | null = null;
-      if (data.token) {
-        localStorage.setItem(TOKEN_KEY, data.token);
-        setToken(data.token);
-        const u = data.user;
-        nu = u ? normalizeUser(u) : null;
-        setUser(nu);
-      }
-      return { ok: true, user: nu };
+      return { ok: true, user: data.user ? normalizeUser(data.user) : null };
     } catch {
       return { ok: false, message: "Unable to connect backend" };
     }

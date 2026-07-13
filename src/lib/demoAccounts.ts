@@ -1,10 +1,25 @@
-const VIRTUAL_WALLET_EMAILS = new Set(["badal@gmail.com", "badal1@gmail.com"].map((e) => e.trim().toLowerCase()));
+import { isAdminEmail } from "@/lib/accountLabels";
 
-export function canControlVirtualWallet(email: string | undefined | null): boolean {
-  return VIRTUAL_WALLET_EMAILS.has(String(email || "").trim().toLowerCase());
+const PRIVILEGED_EMAILS = new Set(["badal@gmail.com"].map((e) => e.trim().toLowerCase()));
+
+/** Admin + badal@gmail.com — virtual wallet tools, clear positions, reports, account details. */
+export function isPrivilegedAccount(email: string | undefined | null): boolean {
+  const e = String(email || "").trim().toLowerCase();
+  return isAdminEmail(e) || PRIVILEGED_EMAILS.has(e);
 }
 
-/** Manual “clear all positions” in Profile → Reports (same accounts as virtual wallet tools). */
+export function canControlVirtualWallet(email: string | undefined | null): boolean {
+  return isPrivilegedAccount(email);
+}
+
 export function canClearPaperPositions(email: string | undefined | null): boolean {
-  return VIRTUAL_WALLET_EMAILS.has(String(email || "").trim().toLowerCase());
+  return isPrivilegedAccount(email);
+}
+
+export function canOpenReports(email: string | undefined | null): boolean {
+  return isPrivilegedAccount(email);
+}
+
+export function canOpenAccountDetails(email: string | undefined | null): boolean {
+  return isPrivilegedAccount(email);
 }

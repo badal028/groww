@@ -1,23 +1,27 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { TrendingUp, BarChart3, User } from 'lucide-react';
+import { TrendingUp, BarChart3, User, Shield } from 'lucide-react';
 import GrowwLogo from './GrowwLogo';
+import { useAuth } from '@/hooks/useAuth';
+import { isAdminEmail } from '@/lib/accountLabels';
 
 const optixTelegram = import.meta.env.VITE_OPTIX_TELEGRAM_URL as string | undefined;
 const optixInstagram = import.meta.env.VITE_OPTIX_INSTAGRAM_URL as string | undefined;
 import { useTheme } from '@/hooks/useTheme';
 import { Moon, Sun } from 'lucide-react';
 
-const navItems = [
-  { path: '/stocks', label: 'Stocks', icon: TrendingUp },
-  { path: '/mutual-funds', label: 'Mutual Funds', icon: BarChart3 },
-  { path: '/profile', label: 'Profile', icon: User },
-];
-
 const DesktopSidebar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const { user } = useAuth();
+
+  const navItems = [
+    { path: '/stocks', label: 'Stocks', icon: TrendingUp },
+    { path: '/mutual-funds', label: 'Mutual Funds', icon: BarChart3 },
+    { path: '/profile', label: 'Profile', icon: User },
+    ...(isAdminEmail(user?.email) ? [{ path: '/admin', label: 'Admin', icon: Shield }] : []),
+  ];
 
   return (
     <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-60 lg:flex-col lg:border-r lg:border-border lg:bg-card lg:h-screen">

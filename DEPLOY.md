@@ -32,6 +32,8 @@ Create or edit `.env.server` next to `package.json` (never commit real secrets):
 | `KITE_REDIRECT_URL` | Must match Kite app settings, e.g. `https://growwtrader.in/kite/callback` if you expose that path on the same host |
 | `ADMIN_EMAIL` | Optional |
 
+**Email OTP (Brevo):** see [§9 Brevo email OTP](#9-brevo-email-otp-signup-verification).
+
 **Why `TRUST_PROXY=1`:** Behind HTTPS termination, the browser talks `https` to nginx, but Node sees `http` locally. OAuth builds the redirect URI from `X-Forwarded-Proto` + `Host`; trusting the proxy makes that reliable.
 
 ---
@@ -165,5 +167,57 @@ App icons live in `android/`, `ios/`, and `windows/` at the repo root. Build cop
 
 Use package name e.g. `in.growwtrader.app`. Keep the signing keystore safe for future APK updates.
 
-cd D:\Cloner\groww-clone-studio
-ssh -i "C:\Users\badal\Downloads\ssh-key-2026-03-20.key" ubuntu@141.148.217.18'
+---
+
+## 9. Brevo email OTP (signup verification)
+
+When `BREVO_API_KEY` is set on the server, **email/password signup** requires a 6-digit code sent to the user’s inbox. Login is unchanged.
+
+### A) Brevo dashboard (one-time)
+
+1. Sign up at [brevo.com](https://www.brevo.com) (free tier: ~300 emails/day).
+2. **SMTP & API** → **API keys** → **Generate a new API key** → copy it (`xkeysib-…`).
+
+**Verify sender (required):**
+
+1. **Senders & IP** → **Senders** → **Add a sender**
+   - Name: `GrowwTrader`
+   - Email: `noreply@growwtrader.in` (or your support email first for testing)
+2. Brevo sends a confirmation link to that address — click it.
+
+**Or verify whole domain (recommended for production):**
+
+1. **Senders & IP** → **Domains** → **Add a domain** → `growwtrader.in`
+2. Add DNS records in Namecheap (Brevo shows TXT/CNAME).
+3. Wait until **Authenticated**.
+
+Unlike Resend sandbox, Brevo sends OTP to **any user email** once the sender/domain is verified.
+
+**IP restriction:** If Brevo returns “unrecognised IP”, open [Authorized IPs](https://app.brevo.com/security/authorised_ips) → add your dev IP and your VPS public IP, or turn off IP blocking for development.
+
+### B) Server `.env.server`
+
+```env
+BREVO_API_KEY=xkeysib-your_key_here
+BREVO_FROM_NAME=GrowwTrader
+BREVO_FROM_EMAIL=noreply@growwtrader.in
+```
+
+Restart after change:
+
+```bash
+cd ~/app && TRUST_PROXY=1 NODE_ENV=production pm2 restart groww-backend --update-env
+```
+
+### C) Test signup
+
+1. Open `/login` → **Sign up** with any email.
+2. Click **Continue to email verification** → check inbox (and spam).
+3. Enter 6-digit code → account created → **Login** with password.
+
+Sent messages appear under Brevo → **Transactional** → **Logs**.
+
+### D) Local dev without Brevo
+
+Set `ALLOW_SIGNUP_WITHOUT_EMAIL_OTP=1` in `.env.server` only for local testing without email. **Do not use in production.** Without that flag and without `BREVO_API_KEY`, signup is blocked until Brevo is configured.
+

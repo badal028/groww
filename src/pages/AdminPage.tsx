@@ -3,10 +3,12 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Trophy } from "lucide-react";
+import { Trophy, RefreshCw } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { isAdminEmail } from "@/lib/accountLabels";
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
-const adminEmail = String(import.meta.env.VITE_ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase();
 
 function formatInr(n: number): string {
   const v = Number(n || 0);
@@ -55,7 +57,36 @@ function datetimeLocalInputToISO(localStr: string): string {
 }
 
 type TodaySignup = { id: string; email: string; createdAt: string };
-type AdminSummary = { today: string; signupsTodayCount: number; signupsToday: TodaySignup[] };
+type AdminSummary = {
+  today: string;
+  totalUsersCount?: number;
+  signupsTodayCount: number;
+  signupsToday: TodaySignup[];
+  loginsTodayCount?: number;
+  uniqueLoginsTodayCount?: number;
+  loginsToday?: { userId: string; email: string; at: string }[];
+};
+
+type DailyLoginRow = {
+  date: string;
+  count: number;
+  uniqueCount: number;
+  logins: { userId: string; email: string; at: string }[];
+};
+
+type UserDetail = {
+  id: string;
+  name: string;
+  email: string;
+  createdAt?: string;
+  lastLoginAt?: string | null;
+  walletInr: number;
+  realWalletInr?: number;
+  realizedPnlInr: number;
+  openPnlInr: number;
+  totalPnlInr: number;
+  hiddenFromLeaderboard?: boolean;
+};
 
 type DailySignupRow = {
   date: string;
@@ -82,11 +113,10 @@ type AdminUserPnl = {
   email: string;
   createdAt?: string;
   walletInr: number;
-  realWalletInr?: number;
   realizedPnlInr: number;
   openPnlInr: number;
   totalPnlInr: number;
-  hiddenFromLeaderboard?: boolean;
+  openPositionCount?: number;
 };
 
 type WithdrawalRow = {
@@ -139,18 +169,18 @@ type PaperPosition = {
   exitedAt?: string;
   openedAt?: string;
   lastTradedAt?: string;
-  kiteSymbol?: string;
+  realizedPnlInr?: number;
+  mktPrice?: number | null;
+  pnlInr?: number | null;
 };
 
 export default function AdminPage() {
   const { user, token, loading: authLoading } = useAuth();
-  const isAdmin = useMemo(() => {
-    if (!adminEmail) return false;
-    return String(user?.email || "").trim().toLowerCase() === adminEmail;
-  }, [user?.email]);
+  const isAdmin = useMemo(() => isAdminEmail(user?.email), [user?.email]);
 
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [dailyRows, setDailyRows] = useState<DailySignupRow[]>([]);
+  const [loginDailyRows, setLoginDailyRows] = useState<DailyLoginRow[]>([]);
   const [users, setUsers] = useState<AdminUserPnl[]>([]);
   const [contest, setContest] = useState<Contest | null>(null);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
@@ -165,12 +195,12 @@ export default function AdminPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [orders, setOrders] = useState<PaperOrder[]>([]);
   const [positions, setPositions] = useState<PaperPosition[]>([]);
+  const [userDetail, setUserDetail] = useState<UserDetail | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  const [adminTab, setAdminTab] = useState<"overview" | "signups" | "users">("overview");
+  const [adminTab, setAdminTab] = useState<"dashboard" | "signups" | "users" | "settings">("dashboard");
+  const [userSearch, setUserSearch] = useState("");
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [signupRange, setSignupRange] = useState<"today" | "14days">("today");
-  const [userRange, setUserRange] = useState<"all" | "today">("all");
-  const [detailsRange, setDetailsRange] = useState<"today" | "7d" | "14d" | "1m" | "1y">("today");
   const [marketBanner, setMarketBanner] = useState<{ enabled: boolean; closedOn: string; opensAt: string }>({
     enabled: false,
     closedOn: "",
@@ -203,9 +233,10 @@ export default function AdminPage() {
   }, [token]);
 
   const refreshAdminListsAfterContestChange = useCallback(async () => {
-    const [sRes, dRes, uRes, cRes] = await Promise.all([
+    const [sRes, dRes, lRes, uRes, cRes] = await Promise.all([
       fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
       fetch(`${apiBase}/admin/signups/daily?days=14`, { headers: authHeaders }),
+      fetch(`${apiBase}/admin/logins/daily?days=14`, { headers: authHeaders }),
       fetch(`${apiBase}/admin/users/pnl`, { headers: authHeaders }),
       fetch(`${apiBase}/admin/contest/current`, { headers: authHeaders }),
     ]);
@@ -217,6 +248,10 @@ export default function AdminPage() {
       const dData = await dRes.json().catch(() => null);
       if (dData?.rows) setDailyRows(dData.rows);
     }
+    if (lRes.ok) {
+      const lData = await lRes.json().catch(() => null);
+      if (lData?.rows) setLoginDailyRows(lData.rows);
+    }
     if (uRes.ok) {
       const uData = await uRes.json().catch(() => null);
       if (uData?.users) setUsers(uData.users);
@@ -225,6 +260,7 @@ export default function AdminPage() {
       const cData = await cRes.json().catch(() => null);
       if (cData?.contest) setContest(cData.contest);
     }
+    setLastRefreshedAt(new Date());
   }, [authHeaders]);
 
   const usersByProfit = useMemo(
@@ -232,74 +268,63 @@ export default function AdminPage() {
     [users],
   );
 
-  const istTodayISO = isoDateInIST(new Date().toISOString());
   const visibleUsersByProfit = useMemo(() => {
-    if (userRange === "today") {
-      return usersByProfit.filter((u) => isoDateInIST(u.createdAt) === istTodayISO);
+    const q = userSearch.trim().toLowerCase();
+    let list = usersByProfit;
+    if (q) {
+      list = list.filter((u) => u.email.toLowerCase().includes(q) || u.name.toLowerCase().includes(q));
     }
-    return usersByProfit;
-  }, [userRange, usersByProfit, istTodayISO]);
-
-  const contestJoinedAtByUserId = useMemo(() => {
-    const m = new Map<string, string>();
-    const parts = contest?.participants || [];
-    for (const p of parts) {
-      if (p.userId) m.set(String(p.userId), p.joinedAt);
-    }
-    return m;
-  }, [contest]);
-
-  const ordersFiltered = useMemo(() => {
-    const now = Date.now();
-    const startMs = (() => {
-      if (detailsRange === "7d") return now - 7 * 86400000;
-      if (detailsRange === "14d") return now - 14 * 86400000;
-      if (detailsRange === "1m") return now - 30 * 86400000;
-      if (detailsRange === "1y") return now - 365 * 86400000;
-      return 0;
-    })();
-
-    if (detailsRange === "today") {
-      return orders.filter((o) => {
-        const ts = o.filledAt || (o as any).createdAt || (o as any).updatedAt;
-        return isoDateInIST(ts) === istTodayISO;
-      });
-    }
-
-    return orders.filter((o) => {
-      const ts = o.filledAt || (o as any).createdAt || (o as any).updatedAt;
-      const t = Date.parse(ts || "");
-      return Number.isFinite(t) && t >= startMs && t <= now;
+    return [...list].sort((a, b) => {
+      const openA = Number(a.openPositionCount ?? 0);
+      const openB = Number(b.openPositionCount ?? 0);
+      if (openB !== openA) return openB - openA;
+      return Number(b.totalPnlInr || 0) - Number(a.totalPnlInr || 0);
     });
-  }, [orders, detailsRange, istTodayISO]);
+  }, [usersByProfit, userSearch]);
 
-  const positionsFiltered = useMemo(() => {
-    const now = Date.now();
-    const startMs = (() => {
-      if (detailsRange === "7d") return now - 7 * 86400000;
-      if (detailsRange === "14d") return now - 14 * 86400000;
-      if (detailsRange === "1m") return now - 30 * 86400000;
-      if (detailsRange === "1y") return now - 365 * 86400000;
-      return 0;
-    })();
+  const openPositions = useMemo(() => positions.filter((p) => !p.exited), [positions]);
+  const pastPositions = useMemo(() => positions.filter((p) => p.exited), [positions]);
+  const sortedOrders = useMemo(
+    () => [...orders].sort((a, b) => Date.parse(b.filledAt || "") - Date.parse(a.filledAt || "")),
+    [orders],
+  );
 
-    if (detailsRange === "today") {
-      return positions.filter((p) => {
-        const ts = p.exited ? p.exitedAt : (p.lastTradedAt || p.openedAt || (p as any).createdAt);
-        return isoDateInIST(ts) === istTodayISO;
+  const signupChartData = useMemo(
+    () => dailyRows.map((r) => ({ date: r.date.slice(5), signups: r.count })),
+    [dailyRows],
+  );
+
+  const loginChartData = useMemo(
+    () => loginDailyRows.map((r) => ({ date: r.date.slice(5), logins: r.count, unique: r.uniqueCount })),
+    [loginDailyRows],
+  );
+
+  const deleteUserById = useCallback(
+    async (userId: string) => {
+      const target = users.find((u) => u.id === userId);
+      const ok = window.confirm(`Delete ${target?.email || "this user"}? This cannot be undone.`);
+      if (!ok) return;
+      const res = await fetch(`${apiBase}/admin/users/delete`, {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ userIds: [userId] }),
       });
-    }
-
-    return positions.filter((p) => {
-      const ts = p.exited ? p.exitedAt : (p.lastTradedAt || p.openedAt || (p as any).createdAt);
-      const t = Date.parse(ts || "");
-      return Number.isFinite(t) && t >= startMs && t <= now;
-    });
-  }, [positions, detailsRange, istTodayISO]);
-
-  const toggleUserSelect = useCallback((userId: string) => {
-    setSelectedUserIds((prev) => (prev.includes(userId) ? prev.filter((x) => x !== userId) : [...prev, userId]));
-  }, []);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(d?.message || "Delete user failed");
+        return;
+      }
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+      if (selectedUserId === userId) {
+        setSelectedUserId(visibleUsersByProfit.find((u) => u.id !== userId)?.id || null);
+        setUserDetail(null);
+        setPositions([]);
+        setOrders([]);
+      }
+      toast.success("User deleted");
+    },
+    [authHeaders, users, selectedUserId, visibleUsersByProfit],
+  );
   const hasLoadedData = Boolean(summary || dailyRows.length || users.length || contest || withdrawals.length);
 
   useEffect(() => {
@@ -315,9 +340,10 @@ export default function AdminPage() {
       try {
         setLoading((prev) => (hasLoadedData ? prev : true));
         setErr(null);
-        const [sRes, dRes, uRes, cRes, wRes, bRes, offerRes, winRes] = await Promise.all([
+        const [sRes, dRes, lRes, uRes, cRes, wRes, bRes, offerRes, winRes] = await Promise.all([
           fetch(`${apiBase}/admin/summary/today`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/signups/daily?days=14`, { headers: authHeaders }),
+          fetch(`${apiBase}/admin/logins/daily?days=14`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/users/pnl`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/contest/current`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/withdrawals`, { headers: authHeaders }),
@@ -328,6 +354,7 @@ export default function AdminPage() {
 
         if (!sRes.ok) throw new Error(await sRes.text().catch(() => "Summary fetch failed"));
         if (!dRes.ok) throw new Error(await dRes.text().catch(() => "Daily signups fetch failed"));
+        if (!lRes.ok) throw new Error(await lRes.text().catch(() => "Daily logins fetch failed"));
         if (!uRes.ok) throw new Error(await uRes.text().catch(() => "Users fetch failed"));
         if (!cRes.ok) throw new Error(await cRes.text().catch(() => "Contest fetch failed"));
         if (!wRes.ok) throw new Error(await wRes.text().catch(() => "Withdrawals fetch failed"));
@@ -337,6 +364,7 @@ export default function AdminPage() {
 
         const sData = await sRes.json();
         const dData = await dRes.json();
+        const lData = await lRes.json();
         const uData = await uRes.json();
         const cData = await cRes.json();
         const wData = await wRes.json();
@@ -347,6 +375,7 @@ export default function AdminPage() {
         if (cancelled) return;
         setSummary(sData?.signupsTodayCount != null ? sData : null);
         setDailyRows(Array.isArray(dData?.rows) ? dData.rows : []);
+        setLoginDailyRows(Array.isArray(lData?.rows) ? lData.rows : []);
         setUsers(Array.isArray(uData?.users) ? uData.users : []);
         setContest(cData?.contest || null);
         setWithdrawals(Array.isArray(wData?.withdrawals) ? wData.withdrawals : []);
@@ -372,6 +401,7 @@ export default function AdminPage() {
           practiceTop3: Array.isArray(winData?.practiceTop3) ? winData.practiceTop3 : [],
           prizeFinalized: Boolean(winData?.prizeFinalized),
         });
+        setLastRefreshedAt(new Date());
         if (!selectedUserId && Array.isArray(uData?.users) && uData.users.length > 0) {
           setSelectedUserId(uData.users[0].id);
         }
@@ -399,20 +429,20 @@ export default function AdminPage() {
     const run = async () => {
       try {
         setDetailsLoading(true);
-        const [oRes, pRes] = await Promise.all([
+        const [dRes, oRes] = await Promise.all([
+          fetch(`${apiBase}/admin/users/${selectedUserId}/detail`, { headers: authHeaders }),
           fetch(`${apiBase}/admin/users/${selectedUserId}/orders`, { headers: authHeaders }),
-          fetch(`${apiBase}/admin/users/${selectedUserId}/positions`, { headers: authHeaders }),
         ]);
 
-        if (!oRes.ok) throw new Error(await oRes.text().catch(() => "Orders fetch failed"));
-        if (!pRes.ok) throw new Error(await pRes.text().catch(() => "Positions fetch failed"));
+        if (!dRes.ok) throw new Error(await dRes.text().catch(() => "User detail fetch failed"));
 
-        const oData = await oRes.json();
-        const pData = await pRes.json();
+        const dData = await dRes.json();
+        const oData = oRes.ok ? await oRes.json().catch(() => ({})) : {};
 
         if (cancelled) return;
+        setUserDetail(dData?.user || null);
+        setPositions(Array.isArray(dData?.positions) ? dData.positions : []);
         setOrders(Array.isArray(oData?.orders) ? oData.orders : []);
-        setPositions(Array.isArray(pData?.positions) ? pData.positions : []);
       } catch (e) {
         if (cancelled) return;
         setErr(e instanceof Error ? e.message : "Admin details failed");
@@ -422,20 +452,31 @@ export default function AdminPage() {
     };
 
     void run();
+    const timer = window.setInterval(() => {
+      void run();
+    }, 30000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, [token, isAdmin, selectedUserId, authHeaders]);
+
+  useEffect(() => {
+    if (!token || !isAdmin) return;
+    if (adminTab !== "dashboard" && adminTab !== "users") return;
+    const timer = window.setInterval(() => {
+      void refreshAdminListsAfterContestChange();
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [token, isAdmin, adminTab, refreshAdminListsAfterContestChange]);
 
   useEffect(() => {
     if (!isAdmin) return;
     if (!selectedUserId) return;
     if (adminTab !== "users") return;
     if (visibleUsersByProfit.some((u) => u.id === selectedUserId)) return;
-    const next = visibleUsersByProfit[0]?.id || null;
-    setSelectedUserId(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userRange, visibleUsersByProfit, adminTab]);
+    setSelectedUserId(visibleUsersByProfit[0]?.id || null);
+  }, [visibleUsersByProfit, adminTab, isAdmin, selectedUserId]);
 
   if (!token) {
     return (
@@ -454,15 +495,33 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="p-4 lg:p-8">
-      <h1 className="mb-4 text-xl font-semibold text-foreground">Admin</h1>
+    <div className="p-4 pb-24 lg:pb-8 lg:p-8">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-foreground">Admin</h1>
+        <div className="flex items-center gap-2">
+          {lastRefreshedAt ? (
+            <span className="text-[11px] text-muted-foreground">
+              Updated {formatDateTimeIST(lastRefreshedAt.toISOString())}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+            onClick={() => void refreshAdminListsAfterContestChange()}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </button>
+        </div>
+      </div>
 
       <div className="mb-4 flex flex-wrap gap-2 rounded-xl border border-border bg-card p-2">
         {(
           [
-            { id: "overview", label: "Overview" },
-            { id: "signups", label: "Signups" },
+            { id: "dashboard", label: "Dashboard" },
             { id: "users", label: "Users" },
+            { id: "signups", label: "Signups" },
+            { id: "settings", label: "Settings" },
           ] as const
         ).map((t) => (
           <button
@@ -480,7 +539,7 @@ export default function AdminPage() {
 
       {err && <div className="mb-4 rounded border border-loss/30 bg-loss/10 p-3 text-sm text-loss">{err}</div>}
 
-      {adminTab === "overview" ? (
+      {adminTab === "settings" ? (
         <div className="mb-4 rounded-xl border border-border bg-card p-4">
           <div className="text-sm font-semibold">Create user account</div>
           <p className="mt-1 text-xs text-muted-foreground">Admin can create a user with password for immediate login.</p>
@@ -548,7 +607,101 @@ export default function AdminPage() {
         <div className="text-sm text-muted-foreground">Loading…</div>
       ) : (
         <>
-          {(adminTab === "overview" || (adminTab === "signups" && signupRange === "today")) && (
+          {adminTab === "dashboard" ? (
+            <>
+              <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {[
+                  { label: "Total users", value: summary?.totalUsersCount ?? users.length },
+                  { label: "Signups today", value: summary?.signupsTodayCount ?? 0 },
+                  { label: "Logins today", value: summary?.loginsTodayCount ?? 0 },
+                  { label: "Unique logins today", value: summary?.uniqueLoginsTodayCount ?? 0 },
+                ].map((card) => (
+                  <div key={card.label} className="rounded-xl border border-border bg-card p-4">
+                    <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{card.label}</div>
+                    <div className="mt-1 text-2xl font-bold tabular-nums text-foreground">{card.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mb-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="text-sm font-semibold">Daily signups (14 days)</div>
+                  <ChartContainer
+                    config={{ signups: { label: "Signups", color: "hsl(var(--primary))" } }}
+                    className="mt-3 h-[220px] w-full"
+                  >
+                    <BarChart data={signupChartData}>
+                      <CartesianGrid vertical={false} />
+                      <XAxis dataKey="date" tickLine={false} axisLine={false} fontSize={10} />
+                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} fontSize={10} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar dataKey="signups" fill="var(--color-signups)" radius={4} />
+                    </BarChart>
+                  </ChartContainer>
+                </div>
+
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="text-sm font-semibold">Daily logins (14 days)</div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">Login events are tracked from now on.</p>
+                  <ChartContainer
+                    config={{
+                      logins: { label: "Logins", color: "hsl(var(--primary))" },
+                      unique: { label: "Unique users", color: "hsl(142 76% 36%)" },
+                    }}
+                    className="mt-3 h-[220px] w-full"
+                  >
+                    <BarChart data={loginChartData}>
+                      <CartesianGrid vertical={false} />
+                      <XAxis dataKey="date" tickLine={false} axisLine={false} fontSize={10} />
+                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} fontSize={10} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar dataKey="logins" fill="var(--color-logins)" radius={4} />
+                      <Bar dataKey="unique" fill="var(--color-unique)" radius={4} />
+                    </BarChart>
+                  </ChartContainer>
+                </div>
+              </div>
+
+              <div className="mb-4 rounded-xl border border-border bg-card p-4">
+                <div className="text-sm font-semibold">Today activity</div>
+                <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                  <div>
+                    <div className="text-xs font-medium text-muted-foreground">Signups</div>
+                    {summary?.signupsToday?.length ? (
+                      <div className="mt-1 space-y-1 text-sm text-foreground">
+                        {summary.signupsToday.map((s) => (
+                          <div key={s.id}>{s.email} · {formatDateTimeIST(s.createdAt)}</div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-sm text-muted-foreground">No signups today</div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-muted-foreground">Logins</div>
+                    {summary?.loginsToday?.length ? (
+                      <div className="mt-1 max-h-40 space-y-1 overflow-auto text-sm text-foreground">
+                        {summary.loginsToday.map((l, i) => (
+                          <div key={`${l.userId}-${l.at}-${i}`}>{l.email} · {formatDateTimeIST(l.at)}</div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-sm text-muted-foreground">No logins recorded today yet</div>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="mt-4 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground"
+                  onClick={() => setAdminTab("users")}
+                >
+                  View all users
+                </button>
+              </div>
+            </>
+          ) : null}
+
+          {(adminTab === "signups" && signupRange === "today") && (
           <div className="mb-4 rounded-xl border border-border bg-card p-4">
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Today signups</div>
             <div className="mt-1 text-lg font-bold text-foreground">
@@ -564,7 +717,7 @@ export default function AdminPage() {
           </div>
           )}
 
-          {adminTab === "overview" ? (
+          {adminTab === "settings" ? (
             <div className="mb-4 rounded-xl border border-border bg-card p-4">
               <div className="text-sm font-semibold">Market notice banner</div>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -635,7 +788,7 @@ export default function AdminPage() {
             </div>
           ) : null}
 
-          {adminTab === "overview" ? (
+          {adminTab === "settings" ? (
             <div className="mb-4 rounded-xl border border-border bg-card p-4">
               <div className="text-sm font-semibold">Prize League offer</div>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -787,7 +940,7 @@ export default function AdminPage() {
           </div>
           ) : null}
 
-          {adminTab === "overview" && contest && (
+          {adminTab === "settings" && contest && (
             <div className="mb-4 rounded-xl border border-border bg-card p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -897,7 +1050,7 @@ export default function AdminPage() {
             </div>
           )}
 
-          {adminTab === "overview" ? (
+          {adminTab === "settings" ? (
             <div className="mb-4 rounded-xl border border-border bg-card p-4">
               <div className="text-sm font-semibold">Daily winners</div>
               <div className="mt-1 text-xs text-muted-foreground">
@@ -954,7 +1107,7 @@ export default function AdminPage() {
             </div>
           ) : null}
 
-          {adminTab === "overview" ? (
+          {adminTab === "settings" ? (
             <div className="mb-4 rounded-xl border border-border bg-card p-4">
               <div className="text-sm font-semibold">Withdrawal requests</div>
               <div className="mt-3 space-y-2">
@@ -1016,113 +1169,34 @@ export default function AdminPage() {
 
           {adminTab === "users" ? (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-            <div className="lg:col-span-5">
+            <div className="lg:col-span-4">
               <div className="rounded-xl border border-border bg-card p-3">
-                <div className="text-sm font-semibold">Users</div>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setUserRange("all")}
-                    className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                      userRange === "all"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-background text-muted-foreground hover:bg-muted/50"
-                    }`}
-                  >
-                    All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setUserRange("today")}
-                    className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                      userRange === "today"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-background text-muted-foreground hover:bg-muted/50"
-                    }`}
-                  >
-                    Signed up today
-                  </button>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={selectedUserIds.length === 0}
-                    className="rounded bg-loss px-3 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
-                    onClick={async () => {
-                      const ok = window.confirm(`Delete ${selectedUserIds.length} selected users? This cannot be undone.`);
-                      if (!ok) return;
-                      const res = await fetch(`${apiBase}/admin/users/delete`, {
-                        method: "POST",
-                        headers: { ...authHeaders, "Content-Type": "application/json" },
-                        body: JSON.stringify({ userIds: selectedUserIds }),
-                      });
-                      const d = await res.json().catch(() => ({}));
-                      if (!res.ok) return setErr(d?.message || "Delete users failed");
-                      const removed = new Set(selectedUserIds);
-                      setUsers((prev) => prev.filter((u) => !removed.has(u.id)));
-                      if (selectedUserId && removed.has(selectedUserId)) {
-                        const next = visibleUsersByProfit.find((u) => !removed.has(u.id))?.id || null;
-                        setSelectedUserId(next);
-                      }
-                      setSelectedUserIds([]);
-                      toast.success(`Deleted ${d?.deleted ?? 0} users`);
-                    }}
-                  >
-                    Delete selected
-                  </button>
-                  <button
-                    type="button"
-                    disabled={selectedUserIds.length === 0}
-                    className="rounded border border-border px-3 py-1 text-[11px] font-semibold disabled:opacity-50"
-                    onClick={async () => {
-                      const res = await fetch(`${apiBase}/admin/leaderboard/remove-users`, {
-                        method: "POST",
-                        headers: { ...authHeaders, "Content-Type": "application/json" },
-                        body: JSON.stringify({ userIds: selectedUserIds }),
-                      });
-                      const d = await res.json().catch(() => ({}));
-                      if (!res.ok) return setErr(d?.message || "Remove from leaderboard failed");
-                      const hidden = new Set(selectedUserIds);
-                      setUsers((prev) => prev.map((u) => (hidden.has(u.id) ? { ...u, hiddenFromLeaderboard: true } : u)));
-                      setSelectedUserIds([]);
-                      toast.success("Removed selected users from Practice + Prize leaderboards");
-                    }}
-                  >
-                    Remove from leaderboard
-                  </button>
-                </div>
-                <div className="mt-2 max-h-[50vh] overflow-auto">
+                <div className="text-sm font-semibold">Users ({visibleUsersByProfit.length})</div>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">Users with open positions appear first.</p>
+                <input
+                  className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  placeholder="Search email or name"
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                />
+                <div className="mt-2 max-h-[70vh] overflow-auto">
                   {visibleUsersByProfit.map((u) => (
-                    <div
+                    <button
                       key={u.id}
+                      type="button"
+                      onClick={() => setSelectedUserId(u.id)}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors",
+                        "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2.5 text-left transition-colors",
                         selectedUserId === u.id ? "bg-muted" : "hover:bg-muted/40",
                       )}
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedUserIds.includes(u.id)}
-                        onChange={() => toggleUserSelect(u.id)}
-                        className="h-4 w-4 rounded border-border"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setSelectedUserId(u.id)}
-                        className="flex min-w-0 flex-1 items-center justify-between gap-2"
-                      >
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold">{u.name}</div>
-                        <div className="truncate text-xs text-muted-foreground">{u.email}</div>
-                          <div className="truncate text-[11px] text-muted-foreground">
-                            Joined: {formatDateTimeIST(u.createdAt)}
+                        <div className="truncate text-sm font-semibold text-foreground">{u.email}</div>
+                        <div className="truncate text-xs text-muted-foreground">{u.name}</div>
+                        {Number(u.openPositionCount) > 0 ? (
+                          <div className="mt-0.5 text-[11px] font-medium text-primary">
+                            {u.openPositionCount} open position{Number(u.openPositionCount) > 1 ? "s" : ""}
                           </div>
-                          <div className="truncate text-[11px] text-muted-foreground">
-                            Contest joined: {formatDateTimeIST(contestJoinedAtByUserId.get(u.id))}
-                          </div>
-                        <div className="truncate text-[11px] text-muted-foreground">Real ₹{Number(u.realWalletInr ?? 0).toFixed(2)}</div>
-                        {u.hiddenFromLeaderboard ? (
-                          <div className="truncate text-[11px] font-medium text-loss">Hidden from leaderboard</div>
                         ) : null}
                       </div>
                       <div
@@ -1133,106 +1207,143 @@ export default function AdminPage() {
                       >
                         {formatInr(u.totalPnlInr)}
                       </div>
-                      </button>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
             </div>
 
-            <div className="lg:col-span-7">
-              <div className="rounded-xl border border-border bg-card p-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold">
-                    User details
-                    {selectedUserId ? ` · ${selectedUserId.slice(0, 8)}` : ""}
-                  </div>
-                  {detailsLoading ? <div className="text-xs text-muted-foreground">Loading…</div> : null}
-                </div>
-
-                <div className="mt-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Date</div>
-                    {(
-                      [
-                        { id: "today", label: "Today" },
-                        { id: "7d", label: "7D" },
-                        { id: "14d", label: "14D" },
-                        { id: "1m", label: "1M" },
-                        { id: "1y", label: "1Y" },
-                      ] as const
-                    ).map((r) => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => setDetailsRange(r.id)}
-                        className={`rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${
-                          detailsRange === r.id ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted/50"
-                        }`}
-                      >
-                        {r.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Orders</div>
-                  <div className="mt-2 max-h-[26vh] overflow-auto rounded-lg border border-border bg-background">
-                    {ordersFiltered.length ? (
-                      ordersFiltered.map((o) => (
-                        <div key={o.id} className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                          <div className="min-w-0">
-                            <div className="truncate text-xs font-semibold text-foreground">
-                              {o.symbol}
-                              {o.instrumentType === "FO" && o.optionType ? ` ${o.optionType} ${o.strike}` : ""}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground">
-                              {o.orderMode || "MARKET"} · Qty {o.quantity} · @ ₹{Number(o.price).toFixed(2)}
-                            </div>
-                            <div className="mt-1 text-[11px] text-muted-foreground">
-                              {o.filledAt ? `Filled: ${formatDateTimeIST(o.filledAt)}` : null}
-                            </div>
-                          </div>
-                          <div className={cn("shrink-0 text-xs font-semibold tabular-nums", o.side === "BUY" ? "text-profit" : "text-loss")}>
-                            {o.side}
-                          </div>
+            <div className="lg:col-span-8">
+              <div className="rounded-xl border border-border bg-card p-4">
+                {!userDetail ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">Select a user</div>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-base font-semibold text-foreground">{userDetail.email}</div>
+                        <div className="text-sm text-muted-foreground">{userDetail.name}</div>
+                        <div className="mt-2 flex flex-wrap gap-3 text-sm">
+                          <span>Wallet ₹{Number(userDetail.walletInr).toLocaleString("en-IN")}</span>
+                          <span className={cn("font-semibold", userDetail.totalPnlInr >= 0 ? "text-profit" : "text-loss")}>
+                            P&L {formatInr(userDetail.totalPnlInr)}
+                          </span>
                         </div>
-                      ))
-                    ) : (
-                      <div className="p-3 text-sm text-muted-foreground">No orders</div>
-                    )}
-                  </div>
-                </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {detailsLoading ? <span className="text-xs text-muted-foreground">Updating…</span> : null}
+                        <button
+                          type="button"
+                          className="rounded-md bg-loss px-3 py-1.5 text-xs font-semibold text-white"
+                          onClick={() => void deleteUserById(userDetail.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
 
-                <div className="mt-4">
-                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Positions (incl. exited)</div>
-                  <div className="mt-2 max-h-[26vh] overflow-auto rounded-lg border border-border bg-background">
-                    {positionsFiltered.length ? (
-                      positionsFiltered.map((p) => (
-                        <div key={p.instrumentKey} className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                          <div className="min-w-0">
-                            <div className="truncate text-xs font-semibold text-foreground">
-                              {p.symbol}
-                              {p.instrumentType === "FO" && p.optionType ? ` ${p.optionType} ${p.strike}` : ""}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground">
-                              Qty {p.quantity} · Avg ₹{Number(p.avgPrice).toFixed(2)}{p.exited ? " · Exited" : ""}
-                            </div>
-                            <div className="mt-1 text-[11px] text-muted-foreground">
-                              {p.exited ? `Exited: ${formatDateTimeIST(p.exitedAt)}` : `Opened: ${formatDateTimeIST(p.openedAt)}`}
-                            </div>
-                            {p.lastTradedAt ? (
-                              <div className="mt-0.5 text-[11px] text-muted-foreground">
-                                Last trade: {formatDateTimeIST(p.lastTradedAt)}
+                    <div className="mt-5">
+                      <div className="text-sm font-semibold text-foreground">
+                        Open positions {openPositions.length ? `(${openPositions.length})` : ""}
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {openPositions.length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+                            No open positions
+                          </div>
+                        ) : (
+                          openPositions.map((p) => (
+                            <div key={p.instrumentKey} className="rounded-lg border border-border bg-background px-3 py-2.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-foreground">
+                                    {p.symbol}
+                                    {p.instrumentType === "FO" && p.optionType ? ` ${p.optionType} ${p.strike}` : ""}
+                                  </div>
+                                  <div className="mt-1 text-xs text-muted-foreground">
+                                    Buy {Math.round(p.quantity)} @ ₹{Number(p.avgPrice).toFixed(2)}
+                                    {p.mktPrice != null ? ` · Mkt ₹${Number(p.mktPrice).toFixed(2)}` : ""}
+                                  </div>
+                                </div>
+                                {p.pnlInr != null ? (
+                                  <div className={cn("shrink-0 text-sm font-semibold tabular-nums", p.pnlInr >= 0 ? "text-profit" : "text-loss")}>
+                                    {formatInr(p.pnlInr)}
+                                  </div>
+                                ) : null}
                               </div>
-                            ) : null}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-5">
+                      <div className="text-sm font-semibold text-foreground">
+                        Past positions {pastPositions.length ? `(${pastPositions.length})` : ""}
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {pastPositions.length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+                            No closed positions
                           </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="p-3 text-sm text-muted-foreground">No positions</div>
-                    )}
-                  </div>
-                </div>
+                        ) : (
+                          pastPositions.map((p) => (
+                            <div key={p.instrumentKey} className="rounded-lg border border-border bg-background px-3 py-2.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-foreground">
+                                    {p.symbol}
+                                    {p.instrumentType === "FO" && p.optionType ? ` ${p.optionType} ${p.strike}` : ""}
+                                  </div>
+                                  <div className="mt-1 text-xs text-muted-foreground">
+                                    Bought {Math.round(p.quantity)} @ ₹{Number(p.avgPrice).toFixed(2)}
+                                    {p.exitedAt ? ` · Closed ${formatDateTimeIST(p.exitedAt)}` : ""}
+                                  </div>
+                                </div>
+                                {p.pnlInr != null ? (
+                                  <div className={cn("shrink-0 text-sm font-semibold tabular-nums", p.pnlInr >= 0 ? "text-profit" : "text-loss")}>
+                                    {formatInr(p.pnlInr)}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-5">
+                      <div className="text-sm font-semibold text-foreground">
+                        Trades {sortedOrders.length ? `(${sortedOrders.length})` : ""}
+                      </div>
+                      <div className="mt-2 max-h-[36vh] space-y-2 overflow-auto">
+                        {sortedOrders.length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+                            No trades yet
+                          </div>
+                        ) : (
+                          sortedOrders.map((o) => (
+                            <div key={o.id} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                              <div className="min-w-0">
+                                <div className="text-sm font-semibold text-foreground">
+                                  {o.side} · {o.symbol}
+                                  {o.instrumentType === "FO" && o.optionType ? ` ${o.optionType} ${o.strike}` : ""}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Qty {o.quantity} @ ₹{Number(o.price).toFixed(2)}
+                                  {o.filledAt ? ` · ${formatDateTimeIST(o.filledAt)}` : ""}
+                                </div>
+                              </div>
+                              <span className={cn("shrink-0 text-xs font-bold", o.side === "BUY" ? "text-profit" : "text-loss")}>
+                                {o.side}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

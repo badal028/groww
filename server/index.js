@@ -29,6 +29,14 @@ import {
   updateSiteSettings,
 } from "./store.js";
 import { attachMarketStream, bumpMarketStreamResync } from "./marketStream.js";
+import {
+  assertEmailVerificationToken,
+  isEmailOtpEnabled,
+  isSignupOtpBypassed,
+  isSignupOtpRequired,
+  sendSignupEmailOtp,
+  verifySignupEmailOtp,
+} from "./emailOtp.js";
 
 let kiteInstrumentsCache = null;
 let kiteInstrumentsLoadedAt = 0;
@@ -60,6 +68,28 @@ const isoDateInIST = (dateLike) => {
   const m = parts.find((p) => p.type === "month")?.value;
   const d = parts.find((p) => p.type === "day")?.value;
   return `${y}-${m}-${d}`;
+};
+
+const LOGIN_EVENTS_RETENTION_MS = 90 * 86400000;
+
+const recordUserLogin = (user) => {
+  if (!user?.id) return;
+  const at = new Date().toISOString();
+  const email = String(user.email || "")
+    .trim()
+    .toLowerCase();
+  updateUser(user.id, (prev) => ({
+    ...prev,
+    lastLoginAt: at,
+    updatedAt: new Date().toISOString(),
+  }));
+  updateSiteSettings((prev) => {
+    const events = Array.isArray(prev.loginEvents) ? [...prev.loginEvents] : [];
+    events.push({ userId: user.id, email, at });
+    const cutoff = Date.now() - LOGIN_EVENTS_RETENTION_MS;
+    const trimmed = events.filter((e) => Number.isFinite(Date.parse(e.at)) && Date.parse(e.at) >= cutoff).slice(-25000);
+    return { ...prev, loginEvents: trimmed };
+  });
 };
 
 const istMinutesNow = () => {
@@ -131,7 +161,11 @@ const isLeaderboardParticipantUser = (u) => {
   return true;
 };
 
-const VIRTUAL_WALLET_CONTROL_EMAILS = new Set(["badal@gmail.com", "badal1@gmail.com"].map((e) => e.trim().toLowerCase()));
+const VIRTUAL_WALLET_CONTROL_EMAILS = new Set(
+  ["badal@gmail.com", String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase()].map((e) =>
+    e.trim().toLowerCase(),
+  ),
+);
 
 const currentPracticeContestForApi = () => {
   const today = activeContestDateISO();
@@ -312,6 +346,21 @@ const isSeededUser = (u) => {
   const email = String(u?.email || "").toLowerCase();
   return Boolean(u?.isSeeded) || email.endsWith("@growwseed.local");
 };
+
+const countOpenPositions = (u) =>
+  (Array.isArray(u?.positions) ? u.positions : []).filter((p) => !p.exited && Number(p.quantity) > 0).length;
+
+const mapAdminUserPnlRow = (u, { realized, open = 0 }) => ({
+  id: u.id,
+  name: u.name,
+  email: u.email,
+  createdAt: u.createdAt,
+  walletInr: Number(u.walletInr ?? 0),
+  realizedPnlInr: realized,
+  openPnlInr: open,
+  totalPnlInr: Number((realized + open).toFixed(2)),
+  openPositionCount: countOpenPositions(u),
+});
 
 const currentContestOrCreate = () => {
   const today = activeContestDateISO();
@@ -536,46 +585,9 @@ const toExpiryLabel = (isoDate) => {
 dotenv.config({ path: path.join(repoRoot, ".env.server") });
 dotenv.config({ path: path.join(repoRoot, ".env") });
 
-/** Email/password + Google OAuth: new accounts only for these (everyone else can still log in). */
-const SIGNUP_ALLOWED_EMAILS = new Set(
-  ["badal@gmail.com", "badal1@gmail.com", "pbadal392@gmail.com"].map((e) => e.trim().toLowerCase()),
-);
-
-/** Keep only allowlisted accounts in DB (requested hard restriction). */
-function pruneUsersToSignupAllowlist() {
-  try {
-    const db = readAllData();
-    const users = Array.isArray(db?.users) ? db.users : [];
-    const keepUsers = users.filter((u) => SIGNUP_ALLOWED_EMAILS.has(String(u?.email || "").trim().toLowerCase()));
-    const keepIds = new Set(keepUsers.map((u) => String(u.id)));
-    const contests = (Array.isArray(db?.contests) ? db.contests : []).map((c) => ({
-      ...c,
-      participants: (Array.isArray(c?.participants) ? c.participants : []).filter((p) => keepIds.has(String(p.userId))),
-      payouts: (Array.isArray(c?.payouts) ? c.payouts : []).filter((p) => keepIds.has(String(p.userId))),
-      updatedAt: new Date().toISOString(),
-    }));
-    const prevCount = users.length;
-    const nextCount = keepUsers.length;
-    if (nextCount !== prevCount) {
-      writeAllData({ ...db, users: keepUsers, contests });
-      // eslint-disable-next-line no-console
-      console.log(`[admin policy] pruned users to allowlist: ${prevCount} -> ${nextCount}`);
-    }
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error("[admin policy] allowlist prune failed:", e?.message || e);
-  }
-}
-
 const app = express();
 if (process.env.TRUST_PROXY === "1") {
   app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS) || 1);
-}
-if (process.env.SKIP_SIGNUP_ALLOWLIST_PRUNE !== "1") {
-  pruneUsersToSignupAllowlist();
-} else {
-  // eslint-disable-next-line no-console
-  console.warn("[admin policy] SKIP_SIGNUP_ALLOWLIST_PRUNE=1 — startup user prune disabled");
 }
 const port = Number(process.env.PORT || 3001);
 
@@ -601,10 +613,14 @@ const corsAllowedExact = new Set([
 /** Canonical site URL for OAuth redirects and links (first entry wins). */
 const frontendOrigin = [...corsAllowedExact][0] || "http://localhost:8080";
 const jwtSecret = process.env.JWT_SECRET || "dev-insecure-secret-change-this";
-const defaultWalletBalance = Number(process.env.DEFAULT_VIRTUAL_BALANCE_INR || 10_000_000);
-/** 10 crore virtual paper wallet for specific demo accounts (INR). */
+const defaultWalletBalance = Number(process.env.DEFAULT_VIRTUAL_BALANCE_INR || 1_000_000);
+/** 10 crore virtual paper wallet for privileged demo accounts (INR). */
 const MEGA_VIRTUAL_BALANCE_INR = 100_000_000;
-const megaVirtualEmails = new Set(["badal@gmail.com", "badal1@gmail.com"].map((e) => e.toLowerCase()));
+const megaVirtualEmails = new Set(
+  ["badal@gmail.com", String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase()].map((e) =>
+    e.toLowerCase(),
+  ),
+);
 const virtualWalletForNewUser = (email) => {
   const e = String(email || "")
     .trim()
@@ -633,6 +649,18 @@ if (googleClientId && googleClientSecret) {
 } else {
   // eslint-disable-next-line no-console
   console.warn("GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET missing. /auth/google will be unavailable.");
+}
+
+if (isEmailOtpEnabled()) {
+  const from = process.env.BREVO_FROM_EMAIL || "(set BREVO_FROM_EMAIL)";
+  // eslint-disable-next-line no-console
+  console.log(`Email OTP: Brevo enabled (from ${from})`);
+} else if (isSignupOtpBypassed()) {
+  // eslint-disable-next-line no-console
+  console.warn("ALLOW_SIGNUP_WITHOUT_EMAIL_OTP=1 — signup skips email OTP (local dev only).");
+} else {
+  // eslint-disable-next-line no-console
+  console.warn("BREVO_API_KEY missing — signup requires email OTP but email is NOT configured.");
 }
 
 /** Callback URL sent to Google — must match Authorized redirect URIs exactly (same host as /auth/google). */
@@ -950,9 +978,62 @@ app.get("/api/market-banner", (_req, res) => {
   return res.json({ status: "ok", enabled, closedOn, opensAt, message });
 });
 
+app.get("/auth/config", (_req, res) => {
+  res.json({
+    status: "ok",
+    emailOtpRequired: isSignupOtpRequired(),
+    emailOtpConfigured: isEmailOtpEnabled(),
+    signupOtpBypass: isSignupOtpBypassed(),
+  });
+});
+
+app.post("/auth/email-otp/send", async (req, res) => {
+  try {
+    const { email, purpose = "signup" } = req.body || {};
+    const emailNorm = String(email || "")
+      .trim()
+      .toLowerCase();
+    if (purpose === "signup") {
+      const existing = getUserByEmail(emailNorm);
+      if (existing) {
+        return res.status(409).json({ status: "error", message: "Email already registered. Use Login instead." });
+      }
+    }
+    const result = await sendSignupEmailOtp({ email: emailNorm, purpose });
+    if (!result.ok) {
+      return res.status(result.status || 500).json({ status: "error", message: result.message });
+    }
+    return res.json({ status: "ok", message: result.message });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error?.message || "Failed to send code" });
+  }
+});
+
+app.post("/auth/email-otp/verify", (req, res) => {
+  try {
+    const { email, otp, purpose = "signup" } = req.body || {};
+    const result = verifySignupEmailOtp({
+      email,
+      otp,
+      purpose,
+      jwtSecret,
+    });
+    if (!result.ok) {
+      return res.status(result.status || 400).json({ status: "error", message: result.message });
+    }
+    return res.json({
+      status: "ok",
+      message: result.message,
+      emailVerificationToken: result.emailVerificationToken,
+    });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error?.message || "Verification failed" });
+  }
+});
+
 app.post("/auth/signup", async (req, res) => {
   try {
-    const { name, email, password } = req.body || {};
+    const { name, email, password, emailVerificationToken } = req.body || {};
     if (!name || !email || !password) {
       return res.status(400).json({ status: "error", message: "name, email, password are required" });
     }
@@ -961,11 +1042,15 @@ app.post("/auth/signup", async (req, res) => {
     }
 
     const emailNorm = String(email).trim().toLowerCase();
-    if (!SIGNUP_ALLOWED_EMAILS.has(emailNorm)) {
-      return res.status(403).json({
-        status: "error",
-        message: "Registration is closed. Only authorized test accounts can sign up.",
-      });
+
+    const verified = assertEmailVerificationToken({
+      token: emailVerificationToken,
+      email: emailNorm,
+      purpose: "signup",
+      jwtSecret,
+    });
+    if (!verified.ok) {
+      return res.status(verified.status || 403).json({ status: "error", message: verified.message });
     }
 
     const existing = getUserByEmail(email);
@@ -984,18 +1069,13 @@ app.post("/auth/signup", async (req, res) => {
       createdAt: new Date().toISOString(),
     });
 
-    const token = createToken(user);
     return res.status(201).json({
       status: "ok",
-      token,
+      message: "Account created. Please log in.",
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        walletInr: user.walletInr,
-        realWalletInr: Number(user.realWalletInr || 0),
-        realizedPnlInr: Number(user.realizedPnlInr || 0),
-        avatarUrl: user.avatarUrl || null,
       },
     });
   } catch (error) {
@@ -1023,6 +1103,7 @@ app.post("/auth/login", async (req, res) => {
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ status: "error", message: "Invalid credentials" });
     const normalizedUser = ensureUserFinancials(user);
+    recordUserLogin(normalizedUser);
 
     const token = createToken(normalizedUser);
     return res.json({
@@ -1058,8 +1139,8 @@ app.post("/auth/account-recovery", async (req, res) => {
       return res.status(401).json({ status: "error", message: "Invalid recovery secret" });
     }
     const emailNorm = String(email || "").trim().toLowerCase();
-    if (!emailNorm || !SIGNUP_ALLOWED_EMAILS.has(emailNorm)) {
-      return res.status(403).json({ status: "error", message: "Recovery is only allowed for authorized test emails" });
+    if (!emailNorm || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) {
+      return res.status(400).json({ status: "error", message: "Enter a valid email" });
     }
     const pwd = String(password || "");
     if (pwd.length < 6) {
@@ -1175,9 +1256,6 @@ app.get("/auth/google/callback", async (req, res) => {
 
     let user = getUserByEmail(email);
     if (!user) {
-      if (!SIGNUP_ALLOWED_EMAILS.has(email)) {
-        return res.redirect(`${frontendOrigin}/login?error=signup_closed`);
-      }
       const passwordHash = await bcrypt.hash(randomUUID() + sub + jwtSecret, 10);
       user = createUser({
         id: randomUUID(),
@@ -1196,6 +1274,7 @@ app.get("/auth/google/callback", async (req, res) => {
       if (linked) user = linked;
     }
 
+    recordUserLogin(user);
     const token = createToken(user);
     return res.redirect(`${frontendOrigin}/login#token=${encodeURIComponent(token)}`);
   } catch (e) {
@@ -1774,11 +1853,18 @@ app.get("/admin/summary/today", authMiddleware, ensureAdmin, (req, res) => {
   const users = getAllUsers().filter((u) => !isSeededUser(u));
   const today = isoDateInIST(new Date());
   const signupsToday = users.filter((u) => isoDateInIST(u.createdAt) === today);
+  const loginEvents = Array.isArray(getSiteSettings().loginEvents) ? getSiteSettings().loginEvents : [];
+  const loginsToday = loginEvents.filter((e) => isoDateInIST(e.at) === today);
+  const uniqueLoginUserIds = new Set(loginsToday.map((e) => e.userId).filter(Boolean));
   return res.json({
     status: "ok",
     today,
+    totalUsersCount: users.length,
     signupsTodayCount: signupsToday.length,
     signupsToday: signupsToday.map((u) => ({ id: u.id, email: u.email, createdAt: u.createdAt })),
+    loginsTodayCount: loginsToday.length,
+    uniqueLoginsTodayCount: uniqueLoginUserIds.size,
+    loginsToday: loginsToday.map((e) => ({ userId: e.userId, email: e.email, at: e.at })),
   });
 });
 
@@ -1800,6 +1886,29 @@ app.get("/admin/signups/daily", authMiddleware, ensureAdmin, (req, res) => {
   const rows = dates.map((date) => {
     const signups = byDate.get(date) || [];
     return { date, count: signups.length, signups };
+  });
+  return res.json({ status: "ok", rows });
+});
+
+/** Last N calendar days (IST) with login counts — for admin charts. */
+app.get("/admin/logins/daily", authMiddleware, ensureAdmin, (req, res) => {
+  const days = Math.min(90, Math.max(1, Number(req.query.days || 14)));
+  const dates = [];
+  for (let i = days - 1; i >= 0; i -= 1) {
+    dates.push(isoDateInIST(new Date(Date.now() - i * 86400000)));
+  }
+  const loginEvents = Array.isArray(getSiteSettings().loginEvents) ? getSiteSettings().loginEvents : [];
+  const byDate = new Map();
+  for (const e of loginEvents) {
+    const d = isoDateInIST(e.at);
+    if (!d) continue;
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d).push({ userId: e.userId, email: e.email, at: e.at });
+  }
+  const rows = dates.map((date) => {
+    const logins = byDate.get(date) || [];
+    const uniqueUsers = new Set(logins.map((x) => x.userId).filter(Boolean));
+    return { date, count: logins.length, uniqueCount: uniqueUsers.size, logins };
   });
   return res.json({ status: "ok", rows });
 });
@@ -2538,6 +2647,86 @@ app.get("/admin/users/:id/positions", authMiddleware, ensureAdmin, (req, res) =>
   });
 });
 
+/** Admin: user profile + positions with live P&L when Kite quotes are available. */
+app.get("/admin/users/:id/detail", authMiddleware, ensureAdmin, async (req, res) => {
+  const user = getUserById(req.params.id);
+  if (!user) return res.status(404).json({ status: "error", message: "User not found" });
+
+  const positions = Array.isArray(user.positions) ? [...user.positions] : [];
+  positions.sort((a, b) => {
+    const ta = Date.parse(a.lastTradedAt || a.exitedAt || a.openedAt || "");
+    const tb = Date.parse(b.lastTradedAt || b.exitedAt || b.openedAt || "");
+    return tb - ta;
+  });
+
+  const realizedPnlInr = Number(user.realizedPnlInr ?? 0);
+  let openPnlInr = 0;
+  let openPnlAvailable = false;
+  const enriched = positions.map((p) => {
+    if (p.exited) {
+      const pnl = Number(p.realizedPnlInr ?? 0);
+      return { ...p, mktPrice: Number(p.avgPrice || 0), pnlInr: pnl };
+    }
+    return { ...p, mktPrice: null, pnlInr: null };
+  });
+
+  const canQuote = Boolean(auth.accessToken);
+  if (canQuote) {
+    try {
+      kite.setAccessToken(auth.accessToken);
+      const openLegs = [];
+      const symbols = new Set();
+      for (let i = 0; i < enriched.length; i += 1) {
+        const p = enriched[i];
+        if (p.exited) continue;
+        const qty = Number(p.quantity ?? 0);
+        const avg = Number(p.avgPrice ?? 0);
+        if (!(qty > 0 && avg > 0)) continue;
+        const k = resolveKiteSymbolFromPosition(p);
+        if (!k) continue;
+        symbols.add(k);
+        openLegs.push({ idx: i, kiteSymbol: k, avgPrice: avg, quantity: qty });
+      }
+      if (symbols.size > 0) {
+        const quotes = await kite.getQuote([...symbols]);
+        openPnlAvailable = true;
+        for (const leg of openLegs) {
+          const q = quotes?.[leg.kiteSymbol];
+          const lpRaw = q?.last_price ?? q?.lastPrice ?? q?.ltp ?? q?.last ?? null;
+          const lp = Number(lpRaw);
+          if (!Number.isFinite(lp)) continue;
+          const pnl = Number(((lp - leg.avgPrice) * leg.quantity).toFixed(2));
+          enriched[leg.idx] = { ...enriched[leg.idx], mktPrice: lp, pnlInr: pnl };
+          openPnlInr = Number((openPnlInr + pnl).toFixed(2));
+        }
+      } else {
+        openPnlAvailable = true;
+      }
+    } catch {
+      openPnlAvailable = false;
+    }
+  }
+
+  return res.json({
+    status: "ok",
+    openPnlAvailable,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+      lastLoginAt: user.lastLoginAt || null,
+      walletInr: Number(user.walletInr ?? 0),
+      realWalletInr: Number(user.realWalletInr ?? 0),
+      realizedPnlInr,
+      openPnlInr,
+      totalPnlInr: Number((realizedPnlInr + openPnlInr).toFixed(2)),
+      hiddenFromLeaderboard: !isLeaderboardParticipantUser(user),
+    },
+    positions: enriched,
+  });
+});
+
 app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
   const users = getAllUsers().filter((u) => !isSeededUser(u));
 
@@ -2555,18 +2744,9 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
     return res.json({
       status: "ok",
       openPnlAvailable: false,
-      users: users.map((u) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        createdAt: u.createdAt,
-        walletInr: Number(u.walletInr ?? 0),
-        realWalletInr: Number(u.realWalletInr ?? 0),
-        realizedPnlInr: Number(u.realizedPnlInr ?? 0),
-        openPnlInr: 0,
-        totalPnlInr: Number(u.realizedPnlInr ?? 0),
-        hiddenFromLeaderboard: !isLeaderboardParticipantUser(u),
-      })),
+      users: users.map((u) =>
+        mapAdminUserPnlRow(u, { realized: Number(u.realizedPnlInr ?? 0), open: 0 }),
+      ),
     });
   }
 
@@ -2593,18 +2773,9 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
       return res.json({
         status: "ok",
         openPnlAvailable: true,
-        users: users.map((u) => ({
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          createdAt: u.createdAt,
-          walletInr: Number(u.walletInr ?? 0),
-          realWalletInr: Number(u.realWalletInr ?? 0),
-          realizedPnlInr: Number(u.realizedPnlInr ?? 0),
-          openPnlInr: 0,
-          totalPnlInr: Number(u.realizedPnlInr ?? 0),
-          hiddenFromLeaderboard: !isLeaderboardParticipantUser(u),
-        })),
+        users: users.map((u) =>
+          mapAdminUserPnlRow(u, { realized: Number(u.realizedPnlInr ?? 0), open: 0 }),
+        ),
       });
     }
 
@@ -2626,18 +2797,7 @@ app.get("/admin/users/pnl", authMiddleware, ensureAdmin, async (req, res) => {
       users: users.map((u) => {
         const realized = realizedByUser.get(u.id) ?? 0;
         const open = openPnlByUser.get(u.id) ?? 0;
-        return {
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          createdAt: u.createdAt,
-          walletInr: Number(u.walletInr ?? 0),
-          realWalletInr: Number(u.realWalletInr ?? 0),
-          realizedPnlInr: realized,
-          openPnlInr: open,
-          totalPnlInr: Number((realized + open).toFixed(2)),
-          hiddenFromLeaderboard: !isLeaderboardParticipantUser(u),
-        };
+        return mapAdminUserPnlRow(u, { realized, open });
       }),
     });
   } catch (e) {
@@ -2710,9 +2870,15 @@ app.post("/paper/position/close", authMiddleware, (req, res) => {
   }
 });
 
-/** Remove an exited position from the list and subtract its realized P&L from running total. */
+/** Remove an exited position from the list (privileged accounts only). */
 app.post("/paper/position/dismiss", authMiddleware, (req, res) => {
   try {
+    const em = String(req.user.email || "")
+      .trim()
+      .toLowerCase();
+    if (!VIRTUAL_WALLET_CONTROL_EMAILS.has(em)) {
+      return res.status(403).json({ status: "error", message: "Clear position is not available for this account" });
+    }
     const { instrumentKey } = req.body || {};
     if (!instrumentKey || typeof instrumentKey !== "string") {
       return res.status(400).json({ status: "error", message: "instrumentKey is required" });

@@ -15,7 +15,7 @@ npm run dev
    - `KITE_API_SECRET`
    - `KITE_REDIRECT_URL=http://127.0.0.1:3001/kite/callback`
    - `JWT_SECRET=your_strong_secret`
-   - `DEFAULT_VIRTUAL_BALANCE_INR=10000000`
+   - `DEFAULT_VIRTUAL_BALANCE_INR=1000000`
 3. Start backend:
 
 ```bash

@@ -29,3 +29,6 @@ server/data/kiteAuth.json
 
 # Generated APK (upload to server manually, do not commit)
 public/downloads/*.apk
+
+# Local deploy cheat sheet (personal server/SSH notes)
+DEPLOY_COMMANDS.md

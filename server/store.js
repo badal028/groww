@@ -18,6 +18,8 @@ const defaultSiteSettings = () => ({
     seatLimit: 250,
     endsAtISO: "",
   },
+  /** { userId, email, at }[] — trimmed to ~90 days for admin login charts */
+  loginEvents: [],
 });
 
 const ensureDb = () => {
@@ -49,6 +51,13 @@ const readDb = () => {
         ...defaultSiteSettings().contestOffer,
         ...(typeof parsed?.siteSettings?.contestOffer === "object" ? parsed.siteSettings.contestOffer : {}),
       },
+      loginEvents: Array.isArray(parsed?.siteSettings?.loginEvents)
+        ? parsed.siteSettings.loginEvents.map((e) => ({
+            userId: String(e?.userId || ""),
+            email: String(e?.email || "").toLowerCase(),
+            at: String(e?.at || ""),
+          }))
+        : [],
     };
     return { users, contests, siteSettings };
   } catch {
@@ -131,6 +140,13 @@ export const updateSiteSettings = (updater) => {
       ...defaultSiteSettings().contestOffer,
       ...(next.contestOffer || {}),
     },
+    loginEvents: Array.isArray(next.loginEvents)
+      ? next.loginEvents.map((e) => ({
+          userId: String(e?.userId || ""),
+          email: String(e?.email || "").toLowerCase(),
+          at: String(e?.at || ""),
+        }))
+      : [],
   };
   writeDb(db);
   return db.siteSettings;
@@ -160,6 +176,13 @@ export const writeAllData = (nextDb) => {
             ...defaultSiteSettings().contestOffer,
             ...(nextDb.siteSettings?.contestOffer || {}),
           },
+          loginEvents: Array.isArray(nextDb.siteSettings?.loginEvents)
+            ? nextDb.siteSettings.loginEvents.map((e) => ({
+                userId: String(e?.userId || ""),
+                email: String(e?.email || "").toLowerCase(),
+                at: String(e?.at || ""),
+              }))
+            : [],
         }
       : prev.siteSettings || defaultSiteSettings();
   writeDb({ users, contests, siteSettings });

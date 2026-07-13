@@ -1,21 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Settings, Wallet, Package, User, Building2, Share2, Headphones, FileText, Pencil } from 'lucide-react';
+import { ArrowLeft, Settings, Wallet, Package, User, Building2, Share2, Headphones, FileText, Pencil, Shield } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { canClearPaperPositions, canControlVirtualWallet } from '@/lib/demoAccounts';
+import { canClearPaperPositions, canControlVirtualWallet, canOpenAccountDetails, canOpenReports } from '@/lib/demoAccounts';
+import { isAdminEmail } from '@/lib/accountLabels';
 import { PAPER_POSITIONS_REFRESH_EVENT } from '@/hooks/usePaperTrading';
 
 const menuItems = [
-  { icon: Wallet, label: '$0.00', sublabel: 'Stocks, F&O balance', action: 'Virtual balance' },
-  { icon: Wallet, label: '$0.00', sublabel: 'Wallet balance', action: 'Add money', actionColor: true },
-  { icon: Package, label: 'Orders', sublabel: '' },
-  { icon: User, label: 'Account Details', sublabel: '' },
-  { icon: Building2, label: 'Banks & Autopay', sublabel: '' },
-  { icon: Share2, label: 'Refer', action: 'Invite', actionColor: true },
-  { icon: Headphones, label: 'Customer Support 24x7', sublabel: '' },
-  { icon: FileText, label: 'Reports', sublabel: '' },
+  { id: 'virtual', icon: Wallet, label: '$0.00', sublabel: 'Stocks, F&O balance', action: 'Virtual balance' },
+  { id: 'orders', icon: Package, label: 'Orders', sublabel: '' },
+  { id: 'account', icon: User, label: 'Account Details', sublabel: '' },
+  { id: 'banks', icon: Building2, label: 'Banks & Autopay', sublabel: '' },
+  { id: 'refer', icon: Share2, label: 'Refer', action: 'Invite', actionColor: true },
+  { id: 'support', icon: Headphones, label: 'Customer Support 24x7', sublabel: '' },
+  { id: 'reports', icon: FileText, label: 'Reports', sublabel: '' },
 ];
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || 'http://127.0.0.1:3001';
 
@@ -75,16 +75,17 @@ const ProfilePage: React.FC = () => {
     return parts.length >= 2 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : src.slice(0, 2).toUpperCase();
   }, [user?.name]);
   const walletLabel = `₹${Number(user?.walletInr ?? 0).toLocaleString('en-IN')}`;
-  const realWalletLabel = `₹${Number(user?.realWalletInr ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const showVirtualWalletTools = canControlVirtualWallet(user?.email);
   const showReportsPositionReset = canClearPaperPositions(user?.email);
+  const canReports = canOpenReports(user?.email);
+  const canAccountDetails = canOpenAccountDetails(user?.email);
 
-  const userMenuItems = menuItems.map((item, index) => {
-    if (item.icon !== Wallet) return item;
-    if (index === 0) return { ...item, label: walletLabel };
-    if (index === 1) return { ...item, label: realWalletLabel };
-    return item;
-  });
+  const userMenuItems = [
+    ...menuItems.map((item) => (item.id === 'virtual' ? { ...item, label: walletLabel } : item)),
+    ...(isAdminEmail(user?.email)
+      ? [{ id: 'admin', icon: Shield, label: 'Admin dashboard', sublabel: 'Users, signups, settings', action: 'Open' as const, actionColor: true }]
+      : []),
+  ];
 
   const openAddMoney = () => {
     setAddAmountInput('');
@@ -332,18 +333,38 @@ const ProfilePage: React.FC = () => {
 
         {/* Menu Items */}
         <div className="flex-1 px-4 lg:px-0 lg:max-w-xl">
-          {userMenuItems.map((item, i) => (
+          {userMenuItems.map((item) => (
             <button
-              key={i}
+              key={item.id}
               type="button"
               onClick={() => {
-                if (i === 1) openAddMoney();
-                if (i === 3 && showVirtualWalletTools) {
+                if (item.id === 'virtual' && showVirtualWalletTools) {
                   setSetBalanceInput('');
                   setAddBalanceInput('');
                   setVirtualWalletOpen(true);
+                  return;
                 }
-                if (i === 7) setReportsOpen(true);
+                if (item.id === 'account') {
+                  if (!canAccountDetails) {
+                    toast.message('Account details are not available');
+                    return;
+                  }
+                  setSetBalanceInput('');
+                  setAddBalanceInput('');
+                  setVirtualWalletOpen(true);
+                  return;
+                }
+                if (item.id === 'reports') {
+                  if (!canReports) {
+                    toast.message('Reports are not available');
+                    return;
+                  }
+                  setReportsOpen(true);
+                  return;
+                }
+                if (item.id === 'admin') {
+                  navigate('/admin');
+                }
               }}
               className="flex w-full items-center justify-between border-b border-border py-4 text-left hover:bg-muted/50 transition-colors rounded px-2 -mx-2"
             >
@@ -361,7 +382,7 @@ const ProfilePage: React.FC = () => {
                   {item.action}
                 </span>
               )}
-              {i === 3 && showVirtualWalletTools ? (
+              {item.id === 'virtual' && showVirtualWalletTools ? (
                 <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
                   Adjust
                 </span>

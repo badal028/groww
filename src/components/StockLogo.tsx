@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { LineChart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Stock } from "@/data/mockData";
-import { getStockLogoUrlCandidates } from "@/utils/stockLogos";
+import { getStockLogoUrlCandidates, stockLogoInitial } from "@/utils/stockLogos";
 
 type StockLogoProps = {
   stock: Pick<Stock, "symbol" | "sector" | "name">;
@@ -19,13 +19,13 @@ const StockLogo: React.FC<StockLogoProps> = ({
 }) => {
   const [urlIndex, setUrlIndex] = useState(0);
   const urls = useMemo(
-    () => getStockLogoUrlCandidates(stock.symbol, stock.sector),
-    [stock.symbol, stock.sector],
+    () => getStockLogoUrlCandidates(stock.symbol, stock.sector, stock.name),
+    [stock.symbol, stock.sector, stock.name],
   );
 
   useEffect(() => {
     setUrlIndex(0);
-  }, [stock.symbol, stock.sector]);
+  }, [stock.symbol, stock.sector, stock.name]);
 
   const roundClass = rounded === "full" ? "rounded-full" : "rounded-md";
   const boxStyle = { width: size, height: size, minWidth: size, minHeight: size };
@@ -47,17 +47,17 @@ const StockLogo: React.FC<StockLogoProps> = ({
   }
 
   if (urlIndex >= urls.length) {
-    const initials = stock.symbol.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() || "?";
+    const initial = stockLogoInitial(stock.name, stock.symbol);
     return (
       <div
         className={cn(
-          "flex items-center justify-center border border-primary bg-muted text-[10px] font-bold text-muted-foreground lg:text-xs",
+          "flex items-center justify-center border border-primary bg-muted text-xs font-bold text-muted-foreground",
           roundClass,
           className,
         )}
         style={boxStyle}
       >
-        {initials}
+        {initial}
       </div>
     );
   }

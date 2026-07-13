@@ -20,6 +20,7 @@ import PositionActionSheet from "@/components/PositionActionSheet";
 import FoTradeModal from "@/components/fo/FoTradeModal";
 import FoOptionChainModal, { type FoContract } from "@/components/fo/FoOptionChainModal";
 import { showSellOrderExecutedToast } from "@/utils/tradingToasts";
+import { canClearPaperPositions } from "@/lib/demoAccounts";
 import { formatFoUnderlyingDisplay } from "@/lib/foDisplaySymbol";
 
 const apiBase = import.meta.env.VITE_MARKET_DATA_API_BASE || "http://127.0.0.1:3001";
@@ -114,7 +115,8 @@ type Props = {
 
 const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compact }) => {
   const navigate = useNavigate();
-  const { token, refreshMe } = useAuth();
+  const { token, refreshMe, user } = useAuth();
+  const canClearPositions = canClearPaperPositions(user?.email);
   const [exitingKey, setExitingKey] = useState<string | null>(null);
   const [clearingKey, setClearingKey] = useState<string | null>(null);
   const { mktByInstrumentKey } = usePositionMktPrices(positions);
@@ -379,25 +381,10 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
                     </button>
                   )}
                   {p.exited ? (
-                    <>
-                      <button
-                        type="button"
-                        title="Remove from positions list"
-                        disabled={!token || clearingKey === p.instrumentKey}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          void clearPosition(p.instrumentKey);
-                        }}
-                        className="inline-flex rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground hover:bg-muted disabled:opacity-40"
-                      >
-                        {clearingKey === p.instrumentKey ? "…" : "Clear"}
-                      </button>
-                      <span className="inline-flex items-center gap-0.5 rounded bg-profit/20 px-1.5 py-0.5 text-[10px] font-semibold text-profit">
-                        <span className="pt-[1px]">B</span>
-                        <ChevronRight className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
-                      </span>
-                    </>
+                    <span className="inline-flex items-center gap-0.5 rounded bg-profit/20 px-1.5 py-0.5 text-[10px] font-semibold text-profit">
+                      <span className="pt-[1px]">B</span>
+                      <ChevronRight className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+                    </span>
                   ) : (
                     <span className="inline-flex items-center gap-0.5 rounded-full bg-[#e8eaf6] px-2 py-0.5 text-[10px] font-medium text-[#5c5f8a] dark:bg-[#131D36] dark:text-[#9DA0D6]">
                       <span className="pt-[1px]">
@@ -442,15 +429,19 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
                   ? () => void exitPositionAt(p.instrumentKey, mkt, p)
                   : undefined
               }
-              onClear={() => {
-                if (!p.exited) {
-                  toast.message("Exit position first", {
-                    description: "Swipe left to exit, then swipe right to clear.",
-                  });
-                  return;
-                }
-                void clearPosition(p.instrumentKey);
-              }}
+              onClear={
+                canClearPositions
+                  ? () => {
+                      if (!p.exited) {
+                        toast.message("Exit position first", {
+                          description: "Swipe left to exit, then swipe right to clear.",
+                        });
+                        return;
+                      }
+                      void clearPosition(p.instrumentKey);
+                    }
+                  : undefined
+              }
               clearReady={Boolean(p.exited)}
               className="border-b border-border last:border-b-0"
             >
