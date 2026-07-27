@@ -28,6 +28,12 @@ function parseWaitSeconds(message: string): number | null {
 
 function formatAuthError(message: string, context: 'login' | 'signup' | 'otp') {
   const raw = String(message || '').trim();
+  if (/invite-only|@optixadmin|telegram for access/i.test(raw)) {
+    return {
+      text: 'Access is invite-only. Kindly contact @optixadmin on Telegram for access.',
+      hintLogin: false,
+    };
+  }
   if (/already registered/i.test(raw)) {
     return {
       text: 'This email is already registered. Log in with your password instead.',
@@ -117,6 +123,7 @@ const LoginPage: React.FC = () => {
       invalid_state: 'Sign-in expired. Please try again.',
       oauth_not_configured: 'Google sign-in is not configured on the server.',
       access_denied: 'Google sign-in was cancelled.',
+      access_closed: 'Access is invite-only. Kindly contact @optixadmin on Telegram for access.',
     };
     setError(map[err] ?? `Error: ${err}`);
     setHintLogin(false);
@@ -423,6 +430,19 @@ const LoginPage: React.FC = () => {
         <h1 className="mb-6 text-2xl font-semibold text-foreground">
           {mode === 'login' ? 'Welcome back' : 'Create account'}
         </h1>
+
+        <p className="mb-4 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          Access is invite-only. Kindly contact{' '}
+          <a
+            href="https://t.me/optixadmin"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-primary underline"
+          >
+            @optixadmin
+          </a>{' '}
+          on Telegram for access.
+        </p>
 
         {mode === 'signup' && !signupOtpBypass && !emailOtpConfigured && (
           <p className="mb-4 rounded-lg border border-loss/30 bg-loss/5 px-3 py-2 text-sm text-loss">

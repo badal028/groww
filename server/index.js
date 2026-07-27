@@ -632,6 +632,14 @@ const minContestParticipants = Number(process.env.MIN_CONTEST_PARTICIPANTS || 50
 const maxContestParticipants = Number(process.env.MAX_CONTEST_PARTICIPANTS || 500);
 const adminEmail = String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase();
 
+/** Invite-only: only these emails may sign up or log in. */
+const ACCESS_CLOSED_MESSAGE =
+  "Access is invite-only. Kindly contact @optixadmin on Telegram for access.";
+const ACCESS_ALLOWED_EMAILS = new Set(
+  ["badal@gmail.com", adminEmail].map((e) => String(e || "").trim().toLowerCase()).filter(Boolean),
+);
+const isAccessAllowedEmail = (email) => ACCESS_ALLOWED_EMAILS.has(String(email || "").trim().toLowerCase());
+
 const marketHoursBypassEmails = new Set(["badal@gmail.com"]);
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
@@ -993,6 +1001,9 @@ app.post("/auth/email-otp/send", async (req, res) => {
     const emailNorm = String(email || "")
       .trim()
       .toLowerCase();
+    if (!isAccessAllowedEmail(emailNorm)) {
+      return res.status(403).json({ status: "error", message: ACCESS_CLOSED_MESSAGE });
+    }
     if (purpose === "signup") {
       const existing = getUserByEmail(emailNorm);
       if (existing) {
@@ -1042,6 +1053,9 @@ app.post("/auth/signup", async (req, res) => {
     }
 
     const emailNorm = String(email).trim().toLowerCase();
+    if (!isAccessAllowedEmail(emailNorm)) {
+      return res.status(403).json({ status: "error", message: ACCESS_CLOSED_MESSAGE });
+    }
 
     const verified = assertEmailVerificationToken({
       token: emailVerificationToken,
@@ -1090,7 +1104,14 @@ app.post("/auth/login", async (req, res) => {
       return res.status(400).json({ status: "error", message: "email and password are required" });
     }
 
-    const user = getUserByEmail(email);
+    const emailNorm = String(email || "")
+      .trim()
+      .toLowerCase();
+    if (!isAccessAllowedEmail(emailNorm)) {
+      return res.status(403).json({ status: "error", message: ACCESS_CLOSED_MESSAGE });
+    }
+
+    const user = getUserByEmail(emailNorm);
     if (!user) return res.status(401).json({ status: "error", message: "Invalid credentials" });
 
     if (!user.passwordHash || typeof user.passwordHash !== "string") {
@@ -1253,6 +1274,9 @@ app.get("/auth/google/callback", async (req, res) => {
     const sub = String(profile.sub || "");
     const avatarUrl = String(profile.picture || "").trim() || null;
     if (!email) throw new Error("Google did not return an email");
+    if (!isAccessAllowedEmail(email)) {
+      return res.redirect(`${frontendOrigin}/login?error=access_closed`);
+    }
 
     let user = getUserByEmail(email);
     if (!user) {

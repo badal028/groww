@@ -262,7 +262,7 @@ const StockDetailPage: React.FC = () => {
             </p>
           )}
 
-          <div className="my-6 rounded-xl border border-border/50 bg-card/20 p-2 dark:bg-[#0b0d10]">
+          <div className="my-6 rounded-xl border border-border/50 bg-card/20 p-2 dark:bg-[#111111]">
             <svg
               viewBox={`0 0 ${CHART_W} ${CHART_H}`}
               className="w-full touch-none"

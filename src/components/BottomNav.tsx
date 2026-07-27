@@ -90,8 +90,8 @@ const BottomNav: React.FC = () => {
   if (location.pathname.startsWith('/stock/') || location.pathname === '/login' || location.pathname === '/') return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[#eef1f4] dark:border-white/10 dark:bg-[#141819] lg:hidden">
-      <div className="mx-auto flex max-w-lg items-center justify-around bg-[#eef1f4] dark:bg-[#141819]">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[#eef1f4] dark:border-white/10 dark:bg-[#111111] lg:hidden">
+      <div className="mx-auto flex max-w-lg items-center justify-around bg-[#eef1f4] dark:bg-[#111111]">
         {tabs.map((tab) => {
           const isActive = tabIsActive(tab.id, location.pathname, location.search);
           const color = isActive ? ACTIVE : INACTIVE;

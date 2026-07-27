@@ -262,7 +262,7 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
         </p>
         <p
           className={cn(
-            "mt-2 text-[13px] font-bold tabular-nums leading-none tracking-tight lg:text-[1.75rem]",
+            "mt-2 text-[14px] font-bold tabular-nums leading-none tracking-tight lg:text-[1.75rem]",
             totalPnl >= 0 ? "text-profit" : "text-loss",
           )}
         >
