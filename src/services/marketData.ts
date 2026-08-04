@@ -104,10 +104,6 @@ const parseNumber = (value: unknown, fallback = 0): number => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
-const zeroStocks = (baseStocks: Stock[]): Stock[] =>
-  baseStocks.map((stock) => ({ ...stock, price: 0, change: 0, changePercent: 0 }));
-const zeroIndices = (baseIndices: MarketIndex[]): MarketIndex[] =>
-  baseIndices.map((index) => ({ ...index, value: 0, change: 0, changePercent: 0 }));
 
 const createMockQuote = (stock: Stock): Quote => {
   const drift = (Math.random() - 0.5) * (stock.price * 0.003);
@@ -180,13 +176,15 @@ const getKiteBackendQuotes = async (baseStocks: Stock[]): Promise<LiveStocksResu
     .map((stock) => KITE_SYMBOL_MAP[stock.symbol])
     .filter((s): s is string => Boolean(s));
 
-  if (instruments.length === 0) return { stocks: zeroStocks(baseStocks), status: "error" };
+  // On any failure below we return the input unchanged (never zeroed) — callers keep
+  // showing the last known-good price instead of the UI flashing to ₹0.00.
+  if (instruments.length === 0) return { stocks: baseStocks, status: "error" };
 
   const url = `${apiBase}/api/quotes?symbols=${encodeURIComponent(instruments.join(","))}`;
   const response = await fetch(url);
 
-  if (response.status === 401) return { stocks: zeroStocks(baseStocks), status: "auth-required" };
-  if (!response.ok) return { stocks: zeroStocks(baseStocks), status: "error" };
+  if (response.status === 401) return { stocks: baseStocks, status: "auth-required" };
+  if (!response.ok) return { stocks: baseStocks, status: "error" };
 
   const data = await response.json();
   const quotes = data?.quotes ?? {};
@@ -225,13 +223,13 @@ const getKiteBackendIndices = async (baseIndices: MarketIndex[]): Promise<LiveIn
     .map((index) => KITE_INDEX_SYMBOL_MAP[index.name])
     .filter((s): s is string => Boolean(s));
 
-  if (instruments.length === 0) return { indices: zeroIndices(baseIndices), status: "error" };
+  if (instruments.length === 0) return { indices: baseIndices, status: "error" };
 
   const url = `${apiBase}/api/quotes?symbols=${encodeURIComponent(instruments.join(","))}`;
   const response = await fetch(url);
 
-  if (response.status === 401) return { indices: zeroIndices(baseIndices), status: "auth-required" };
-  if (!response.ok) return { indices: zeroIndices(baseIndices), status: "error" };
+  if (response.status === 401) return { indices: baseIndices, status: "auth-required" };
+  if (!response.ok) return { indices: baseIndices, status: "error" };
 
   const data = await response.json();
   const quotes = data?.quotes ?? {};

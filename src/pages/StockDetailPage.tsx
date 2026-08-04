@@ -84,7 +84,7 @@ const StockDetailPage: React.FC = () => {
     return allStocks.find((s) => s.id === id) || popularStocks[0];
   }, [id]);
 
-  const { displayStock, series1d, status: quoteStatus, liveOhlc } = useLiveStockDetail(
+  const { displayStock, series1d, liveOhlc } = useLiveStockDetail(
     baseStock,
     activeRange,
   );
@@ -160,14 +160,6 @@ const StockDetailPage: React.FC = () => {
         ? 'NSE'
         : 'NSE';
 
-  const quoteBadge =
-    quoteStatus === 'live'
-      ? { text: 'Live', className: 'border-emerald-500/40 text-emerald-600 dark:text-emerald-400' }
-      : quoteStatus === 'auth-required'
-        ? { text: 'Login data', className: 'border-amber-500/40 text-amber-600' }
-        : quoteStatus === 'simulated'
-          ? { text: 'Simulated', className: 'border-border text-muted-foreground' }
-          : { text: 'Delayed', className: 'border-border text-muted-foreground' };
 
   const handleEquityOrder = async (side: 'BUY' | 'SELL', quantity: number) => {
     const kiteKey = resolveKiteKeyForStock(displayStock);
@@ -240,11 +232,6 @@ const StockDetailPage: React.FC = () => {
             >
               ₹{displayStock.price.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </p>
-            <span
-              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${quoteBadge.className}`}
-            >
-              {quoteBadge.text}
-            </span>
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-sm font-medium ${isPositive ? 'text-profit' : 'text-loss'}`}>

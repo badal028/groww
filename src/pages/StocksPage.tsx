@@ -67,7 +67,7 @@ const StocksPage: React.FC = () => {
   };
 
   const baseStocks = activeTab === 'Positions' ? POSITIONS_TAB_STOCKS : getStocksForTab();
-  const { stocks, status } = useLiveStocks(baseStocks);
+  const { stocks } = useLiveStocks(baseStocks);
   const { indices: liveIndices } = useLiveIndices(marketIndices);
   const { positions, loading: positionsLoading } = usePaperPositions();
   const { orders, loading: ordersLoading } = usePaperOrders();
@@ -96,7 +96,6 @@ const StocksPage: React.FC = () => {
     },
     [navigate],
   );
-  const kiteLoginUrl = `${apiBase}/kite/login`;
 
   const [marketBanner, setMarketBanner] = useState<{ enabled: boolean; message: string }>({
     enabled: false,
@@ -221,14 +220,6 @@ const StocksPage: React.FC = () => {
           <h2 className="text-base font-semibold text-foreground lg:text-lg">
             {mobileSectionTitle}
           </h2>
-          {status === 'auth-required' ? (
-            <a
-              href={kiteLoginUrl}
-              className="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary hover:bg-muted"
-            >
-              Connect Kite
-            </a>
-          ) : null}
         </div>
 
         {/* Stock Cards Grid - responsive columns */}
@@ -420,14 +411,6 @@ const StocksPage: React.FC = () => {
               <>
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-[1.25rem] font-semibold text-foreground">{desktopStockGridTitle}</h2>
-                  {status === 'auth-required' ? (
-                    <a
-                      href={kiteLoginUrl}
-                      className="rounded-full border border-border px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-primary hover:bg-muted"
-                    >
-                      Connect Kite
-                    </a>
-                  ) : null}
                 </div>
                 <div className="mb-4 grid grid-cols-4 gap-3">
                   {stocks.slice(0, 4).map((stock) => (

@@ -12,11 +12,9 @@ import { subscribeKiteConnection, subscribeKiteMarket } from "@/services/kiteMar
 
 const REFRESH_MS_FALLBACK = 30000;
 const KITE_REST_FALLBACK_MS = 90_000;
-const zeroIndices = (arr: MarketIndex[]): MarketIndex[] =>
-  arr.map((i) => ({ ...i, value: 0, change: 0, changePercent: 0 }));
 
 export const useLiveIndices = (baseIndices: MarketIndex[]) => {
-  const [indices, setIndices] = useState<MarketIndex[]>(() => zeroIndices(baseIndices));
+  const [indices, setIndices] = useState<MarketIndex[]>(() => baseIndices);
   const [status, setStatus] = useState<LiveStatus>("simulated");
   const [kiteWsConnected, setKiteWsConnected] = useState(false);
   const provider = useMemo(() => detectProvider(), []);
@@ -25,7 +23,7 @@ export const useLiveIndices = (baseIndices: MarketIndex[]) => {
   useEffect(() => subscribeKiteConnection(setKiteWsConnected), []);
 
   useEffect(() => {
-    setIndices(zeroIndices(baseIndices));
+    setIndices(baseIndices);
   }, [baseIndices]);
 
   useEffect(() => {
@@ -58,7 +56,11 @@ export const useLiveIndices = (baseIndices: MarketIndex[]) => {
     const refresh = async () => {
       const result = await getLiveIndices(baseIndices);
       if (!active) return;
-      setIndices(result.indices);
+      // Keep last known-good values silently on failure/unauthenticated instead of
+      // overwriting with stale/default values.
+      if (result.status !== "error" && result.status !== "auth-required") {
+        setIndices(result.indices);
+      }
       setStatus(result.status);
     };
 

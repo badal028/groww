@@ -247,46 +247,68 @@ const collectQuoteSymbolsForDay = (users, dayISO) => {
 /** Kite batch limit — split to avoid slow/hanging quote calls. */
 const KITE_QUOTE_CHUNK = 400;
 const KITE_QUOTE_CACHE_MS = 12_000;
-let kiteQuoteCache = { key: "", at: 0, data: {} };
-const kiteQuoteInflight = new Map();
 
 /**
- * Single Kite round-trip (or chunked) with short TTL cache + in-flight dedupe.
- * Cuts load when many clients poll /contest/leaderboard at once.
+ * Factory for a short-TTL cache + in-flight dedupe around `kite.getQuote`.
+ * Collapses N simultaneous requests for the same symbol set into a single upstream Kite call,
+ * so N users polling quotes doesn't mean N Kite REST calls.
+ *
+ * @param {{ ttlMs: number, staleOnError?: boolean }} opts
+ *   staleOnError: on upstream failure, serve the last-known data for that symbol set (even if past TTL)
+ *   instead of throwing — lets REST endpoints degrade gracefully instead of erroring for every client.
  */
-const fetchKiteQuotesCached = async (symbols) => {
-  if (!Array.isArray(symbols) || !symbols.length || !auth.accessToken) return {};
-  const unique = [...new Set(symbols.map((s) => String(s).trim()).filter(Boolean))];
-  if (!unique.length) return {};
-  unique.sort();
-  const cacheKey = unique.join("\u0001");
-  const now = Date.now();
-  if (kiteQuoteCache.key === cacheKey && now - kiteQuoteCache.at < KITE_QUOTE_CACHE_MS) {
-    return kiteQuoteCache.data;
-  }
-  const pending = kiteQuoteInflight.get(cacheKey);
-  if (pending) return pending;
+const makeQuoteCache = ({ ttlMs, staleOnError = false }) => {
+  const cache = new Map(); // cacheKey -> { at, data }
+  const inflight = new Map(); // cacheKey -> Promise
 
-  const p = (async () => {
-    try {
-      kite.setAccessToken(auth.accessToken);
-      const merged = {};
-      for (let i = 0; i < unique.length; i += KITE_QUOTE_CHUNK) {
-        const chunk = unique.slice(i, i + KITE_QUOTE_CHUNK);
-        const part = await kite.getQuote(chunk);
-        if (part && typeof part === "object") Object.assign(merged, part);
+  return async function fetchQuotes(symbols) {
+    if (!Array.isArray(symbols) || !symbols.length || !auth.accessToken) return {};
+    const unique = [...new Set(symbols.map((s) => String(s).trim()).filter(Boolean))];
+    if (!unique.length) return {};
+    unique.sort();
+    const cacheKey = unique.join("\u0001");
+    const now = Date.now();
+
+    const cached = cache.get(cacheKey);
+    if (cached && now - cached.at < ttlMs) return cached.data;
+
+    const pending = inflight.get(cacheKey);
+    if (pending) return pending;
+
+    const p = (async () => {
+      try {
+        kite.setAccessToken(auth.accessToken);
+        const merged = {};
+        for (let i = 0; i < unique.length; i += KITE_QUOTE_CHUNK) {
+          const chunk = unique.slice(i, i + KITE_QUOTE_CHUNK);
+          const part = await kite.getQuote(chunk);
+          if (part && typeof part === "object") Object.assign(merged, part);
+        }
+        cache.set(cacheKey, { at: Date.now(), data: merged });
+        return merged;
+      } catch {
+        if (staleOnError && cached) return cached.data;
+        return {};
+      } finally {
+        inflight.delete(cacheKey);
       }
-      kiteQuoteCache = { key: cacheKey, at: Date.now(), data: merged };
-      return merged;
-    } catch {
-      return {};
-    } finally {
-      kiteQuoteInflight.delete(cacheKey);
-    }
-  })();
-  kiteQuoteInflight.set(cacheKey, p);
-  return p;
+    })();
+    inflight.set(cacheKey, p);
+    return p;
+  };
 };
+
+/** Used by admin/contest aggregate P&L helpers (larger symbol sets, 12s freshness is fine). */
+const fetchKiteQuotesCached = makeQuoteCache({ ttlMs: KITE_QUOTE_CACHE_MS });
+
+/**
+ * Used by the user-facing `/api/quotes` hot path. Shorter TTL keeps prices close to the
+ * frontend's REST-fallback poll cadence, while still collapsing bursts across concurrent users
+ * viewing the same symbols. Falls back to the last-known quote on a transient Kite error/timeout
+ * so a single hiccup doesn't turn into a 500 for every polling client.
+ */
+const USER_QUOTE_CACHE_MS = 4_000;
+const fetchUserQuotesCached = makeQuoteCache({ ttlMs: USER_QUOTE_CACHE_MS, staleOnError: true });
 
 const getQuotesForUsersDay = async (users, dayISO) => {
   const symbols = collectQuoteSymbolsForDay(users, dayISO);
@@ -3310,7 +3332,7 @@ app.get("/api/quotes", ensureAuth, async (req, res) => {
       return res.status(400).json({ status: "error", message: "No instruments provided" });
     }
 
-    const quotes = await kite.getQuote(instruments);
+    const quotes = await fetchUserQuotesCached(instruments);
     return res.json({ status: "ok", quotes });
   } catch (error) {
     return res.status(500).json({ status: "error", message: error?.message || "Quote fetch failed" });
@@ -3346,7 +3368,7 @@ app.get("/api/options-chain", ensureAuth, async (req, res) => {
       return [`NSE:${sym}`, `BSE:${sym}`];
     })();
 
-    const underlyingQuotes = await kite.getQuote(underlyingQuoteSymbols);
+    const underlyingQuotes = await fetchUserQuotesCached(underlyingQuoteSymbols);
     const underlyingQuote =
       underlyingQuotes?.[underlyingQuoteSymbols[0]] ||
       underlyingQuotes?.[underlyingQuoteSymbols[1]] ||
@@ -3506,7 +3528,7 @@ app.get("/api/options-chain", ensureAuth, async (req, res) => {
     }
 
     const symbols = contracts.map((c) => c.kiteSymbol);
-    const optionQuotes = await kite.getQuote(symbols);
+    const optionQuotes = await fetchUserQuotesCached(symbols);
 
     const expiryISOResolved = String(parseExpiryToISO(chosenExpiryLabel)).slice(0, 10);
     const expiryLabelPretty = new Date(`${expiryISOResolved}T00:00:00Z`).toLocaleDateString("en-IN", {

@@ -42,11 +42,8 @@ export function usePositionMktPrices(positions: PaperPosition[]) {
       try {
         const url = `${apiBase}/api/quotes?symbols=${encodeURIComponent(keys.join(","))}`;
         const res = await fetch(url);
-        if (res.status === 401 || res.status === 403) {
-          if (cancelled) return;
-          setMktByInstrumentKey({});
-          return;
-        }
+        // On auth failure, silently keep whatever prices we already have (don't blank P&L).
+        if (res.status === 401 || res.status === 403) return;
         if (!res.ok) return;
         const data = await res.json();
         const quotes = data?.quotes ?? {};
@@ -61,7 +58,7 @@ export function usePositionMktPrices(positions: PaperPosition[]) {
         }
         setMktByInstrumentKey((prev) => ({ ...prev, ...next }));
       } catch {
-        /* Kite may be logged out */
+        /* Kite may be logged out — keep last known prices */
       }
     };
 
@@ -83,10 +80,8 @@ export function usePositionMktPrices(positions: PaperPosition[]) {
         const url = `${apiBase}/api/quotes?symbols=${encodeURIComponent(keys.join(","))}`;
         const res = await fetch(url);
         if (stopped) return;
-        if (res.status === 401 || res.status === 403) {
-          setMktByInstrumentKey({});
-          return;
-        }
+        // On auth failure, silently keep whatever prices we already have (don't blank P&L).
+        if (res.status === 401 || res.status === 403) return;
         if (!res.ok) return;
         const data = await res.json();
         const quotes = data?.quotes ?? {};
