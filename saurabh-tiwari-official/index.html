@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Optix Trades Official</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --gold:   #F5A623;
+      --green:  #1DB954;
+      --blue:   #2AABEE;
+      --orange: #FF6B35;
+      --bg:     #080B12;
+      --card:   #0D1117;
+      --line:   #ffffff0d;
+      --t1:     #F0F2F7;
+      --t2:     #8892A4;
+      --t3:     #4A5568;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      background: var(--bg);
+      color: var(--t1);
+      font-family: 'Manrope', 'Inter', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: radial-gradient(circle, #ffffff06 1px, transparent 1px);
+      background-size: 28px 28px;
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ─── TICKER ─── */
+    .ticker {
+      background: #0A0D14;
+      border-bottom: 1px solid var(--line);
+      overflow: hidden;
+      padding: 8px 0;
+      white-space: nowrap;
+      position: relative; z-index: 1;
+    }
+    .ticker-inner {
+      display: inline-flex;
+      align-items: center;
+      animation: marquee 22s linear infinite;
+    }
+    .tick {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      color: var(--t3);
+      text-transform: uppercase;
+      padding: 0 18px;
+    }
+    .tick.up { color: var(--green); }
+    .tick-sep { color: #ffffff15; padding: 0 4px; }
+    @keyframes marquee { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+
+    /* ─── PAGE ─── */
+    .page {
+      position: relative; z-index: 1;
+      max-width: 390px;
+      margin: 0 auto;
+      padding: 0 16px 56px;
+    }
+
+    /* ─── TOP ─── */
+    .top {
+      padding: 28px 0 16px;
+      text-align: center;
+      animation: fadeIn 0.6s ease both;
+    }
+
+    .avatar-wrap {
+      position: relative;
+      display: inline-block;
+      margin-bottom: 12px;
+    }
+
+    .avatar {
+      width: 92px; height: 92px;
+      border-radius: 50%;
+      background: url('logo.jpg') center/cover no-repeat;
+      border: 2px solid #F5A62340;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .v-badge {
+      position: absolute; bottom: 0; right: -2px;
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      border: 2px solid var(--bg);
+      overflow: hidden;
+      display: block;
+      object-fit: cover;
+      background: #ffffff;
+    }
+
+    .brand-name {
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      line-height: 1.2;
+      margin-bottom: 4px;
+    }
+    .brand-name span { color: var(--gold); }
+
+    .tagline {
+      font-size: 12px;
+      color: var(--t2);
+      line-height: 1.6;
+    }
+
+    /* ─── LIVE BADGE ─── */
+    .live-wrap {
+      text-align: center;
+      margin-bottom: 14px;
+      animation: slideUp 0.5s 0.1s ease both;
+    }
+    .live-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #1a0a0a;
+      border: 1px solid #ff444430;
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: #ff6666;
+      text-transform: uppercase;
+    }
+    .live-dot {
+      width: 6px; height: 6px;
+      background: #ff4444;
+      border-radius: 50%;
+      animation: pulse 1.2s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    /* ─── STATS ─── */
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      margin: 0 0 10px;
+      animation: slideUp 0.5s 0.15s ease both;
+    }
+    .stat {
+      background: #0D1624;
+      border: 1px solid #F5A62318;
+      border-radius: 12px;
+      padding: 14px 8px 12px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 10%; right: 10%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #F5A62360, transparent);
+    }
+    .stat-n {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--gold);
+      line-height: 1;
+      margin-bottom: 4px;
+      text-shadow: 0 0 24px #F5A62340;
+    }
+    .stat-l {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #F5A62355;
+    }
+
+    /* ─── MEMBERS ─── */
+    .members {
+      background: #0a1510;
+      border: 1px solid #1DB95420;
+      border-radius: 12px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      animation: slideUp 0.5s 0.2s ease both;
+    }
+    .member-avatars { display: flex; align-items: center; }
+    .m-av {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: #1DB95430;
+      border: 2px solid var(--bg);
+      margin-left: -8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 800; color: var(--green);
+    }
+    .m-av:first-child { margin-left: 0; }
+    .member-txt { flex: 1; }
+    .m-num { font-size: 14px; font-weight: 800; color: var(--green); line-height: 1; }
+    .m-sub { font-size: 10px; color: var(--t3); margin-top: 2px; }
+
+    /* ─── PROOF CARD ─── */
+    .proof {
+      background: #0D1624;
+      border: 1px solid #F5A62320;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+      animation: slideUp 0.5s 0.25s ease both;
+    }
+    .proof-head {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #F5A62370;
+      margin-bottom: 8px;
+    }
+    .trades { display: flex; flex-direction: column; gap: 6px; }
+    .trade {
+      display: flex; align-items: center; gap: 8px;
+      background: #ffffff05;
+      border: 1px solid #ffffff0a;
+      border-radius: 8px;
+      padding: 7px 9px;
+    }
+    .trade-sym {
+      font-size: 11px; font-weight: 800;
+      color: var(--t1);
+      min-width: 110px;
+    }
+    .trade-bar {
+      flex: 1; height: 4px;
+      background: #ffffff10;
+      border-radius: 2px; overflow: hidden;
+    }
+    .trade-fill { height: 100%; border-radius: 2px; background: var(--green); }
+    .trade-pct {
+      font-size: 12px; font-weight: 800;
+      color: var(--green);
+      min-width: 44px;
+      text-align: right;
+    }
+
+    /* ─── TELEGRAM BUTTON ─── */
+    .tg {
+      margin-bottom: 8px;
+      animation: slideUp 0.5s 0.3s ease both;
+    }
+    .tg-btn {
+      display: flex; align-items: center; gap: 12px;
+      width: 100%; padding: 14px 14px;
+      background: linear-gradient(110deg, #0E4F8B 0%, #1A7CC4 55%, #2AABEE 100%);
+      border: none; border-radius: 12px;
+      text-decoration: none; color: #fff; cursor: pointer;
+      position: relative; overflow: hidden;
+      box-shadow: 0 8px 28px #2AABEE28, inset 0 1px 0 #ffffff18;
+      transition: transform 0.15s ease;
+    }
+    .tg-btn:active { transform: scale(0.98); }
+    .tg-btn::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 50%;
+      background: linear-gradient(180deg, #ffffff12, transparent);
+      border-radius: 12px 12px 0 0;
+      pointer-events: none;
+    }
+    .tg-btn::after {
+      content: '';
+      position: absolute; top: 0; left: -80%;
+      width: 60%; height: 100%;
+      background: linear-gradient(90deg, transparent, #ffffff14, transparent);
+      animation: sweep 3s ease-in-out 1s infinite;
+    }
+    @keyframes sweep { 0%{left:-80%} 100%{left:140%} }
+
+    .btn-ico {
+      width: 34px; height: 34px;
+      background: #ffffff18;
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; flex-shrink: 0;
+    }
+    .btn-txt { flex: 1; }
+    .btn-main { font-size: 13px; font-weight: 800; line-height: 1.1; letter-spacing: -0.1px; }
+    .btn-sub { font-size: 10px; opacity: 0.65; margin-top: 2px; }
+    .btn-arrow { font-size: 20px; opacity: 0.4; font-weight: 300; flex-shrink: 0; }
+
+    /* ─── DIVIDER ─── */
+    .divider {
+      display: flex; align-items: center; gap: 10px;
+      margin: 10px 0;
+      animation: slideUp 0.5s 0.35s ease both;
+    }
+    .div-line { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, #FF6B3550, transparent); }
+    .div-txt { font-size: 9px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #FF6B35a0; white-space: nowrap; }
+
+    /* ─── ORANGE BUTTON ─── */
+    .orange-wrap {
+      margin-bottom: 10px;
+      animation: slideUp 0.5s 0.38s ease both;
+    }
+    .orange-btn {
+      display: flex; align-items: center; gap: 12px;
+      width: 100%; padding: 14px 14px;
+      background: linear-gradient(135deg, #FF6B35, #FB923C);
+      border: 1px solid #fdba7440;
+      border-radius: 12px;
+      text-decoration: none;
+      color: #0c0a08;
+      cursor: pointer;
+      box-shadow: 0 8px 24px #ff6b3528;
+      transition: transform 0.15s ease;
+    }
+    .orange-btn:active { transform: scale(0.98); }
+    .orange-btn .btn-sub { color: #0c0a0890; }
+    .orange-btn .btn-arrow { color: #0c0a0850; }
+
+    /* ─── TESTIMONIALS ─── */
+    .testimonials {
+      margin-bottom: 10px;
+      animation: slideUp 0.5s 0.42s ease both;
+    }
+    .t-head {
+      font-size: 9px; font-weight: 800;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--t3); margin-bottom: 8px; text-align: center;
+    }
+    .t-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .t-card {
+      background: #0D1117;
+      border: 1px solid #ffffff10;
+      border-radius: 10px;
+      padding: 9px 10px;
+    }
+    .t-stars { font-size: 9px; color: var(--gold); letter-spacing: 1px; margin-bottom: 4px; }
+    .t-txt { font-size: 10px; color: var(--t2); line-height: 1.5; margin-bottom: 5px; }
+    .t-name { font-size: 9px; font-weight: 700; color: var(--t3); }
+
+    /* ─── FOOTER ─── */
+    .foot {
+      margin-top: 24px; text-align: center;
+      animation: slideUp 0.5s 0.46s ease both;
+    }
+    .foot-hr { height: 1px; background: linear-gradient(90deg, transparent, #F5A62320, transparent); margin-bottom: 12px; }
+    .foot-txt { font-size: 9px; font-weight: 500; color: var(--t3); letter-spacing: 0.04em; line-height: 1.9; }
+
+    /* ─── ANIMATIONS ─── */
+    @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
+    @keyframes slideUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
+  </style>
+</head>
+<body>
+
+<!-- TICKER -->
+<div class="ticker">
+  <div class="ticker-inner">
+    <span class="tick up">📈 NIFTY <b>+1.2%</b></span>
+    <span class="tick-sep">·</span>
+    <span class="tick up">🔥 BANKNIFTY CE <b>+340%</b></span>
+    <span class="tick-sep">·</span>
+    <span class="tick up">⚡ RELIANCE <b>+2.8%</b></span>
+    <span class="tick-sep">·</span>
+    <span class="tick">🎯 OPTIONS IDEAS LIVE</span>
+    <span class="tick-sep">·</span>
+    <!-- duplicate for seamless loop -->
+    <span class="tick up">📈 NIFTY <b>+1.2%</b></span>
+    <span class="tick-sep">·</span>
+    <span class="tick up">🔥 BANKNIFTY CE <b>+340%</b></span>
+    <span class="tick-sep">·</span>
+    <span class="tick up">⚡ RELIANCE <b>+2.8%</b></span>
+    <span class="tick-sep">·</span>
+    <span class="tick">🎯 OPTIONS IDEAS LIVE</span>
+    <span class="tick-sep">·</span>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- TOP -->
+  <div class="top">
+    <div class="avatar-wrap">
+      <!--
+        Option A: Use your logo.png (recommended)
+        Replace the .avatar div below with:
+        <img src="logo.png" alt="Optix Trades Official" style="width:92px;height:92px;border-radius:50%;object-fit:cover;border:2px solid #F5A62340;box-shadow:0 4px 14px #F5A62340;display:block;" width="92" height="92"/>
+
+        Option B: Keep initials avatar (shown below)
+      -->
+      <div class="avatar" aria-label="Optix Trades logo"></div>
+      <img class="v-badge" src="verified.png" alt="Verified" width="26" height="26"/>
+    </div>
+    <div class="brand-name">Optix Trades <span>OFFICIAL</span></div>
+    <p class="tagline">Premium options trading · Market insights</p>
+  </div>
+
+  <!-- LIVE BADGE -->
+  <div class="live-wrap">
+    <span class="live-badge">
+      <span class="live-dot"></span>
+      Markets open · Calls active
+    </span>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-n">95%</div>
+      <div class="stat-l">Accuracy</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n">3.2k+</div>
+      <div class="stat-l">Trades Given</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n">4 yr</div>
+      <div class="stat-l">Experience</div>
+    </div>
+  </div>
+
+  <!-- MEMBERS -->
+  <div class="members">
+    <div class="member-avatars">
+      <div class="m-av">RK</div>
+      <div class="m-av">AS</div>
+      <div class="m-av">PV</div>
+      <div class="m-av">+</div>
+    </div>
+    <div class="member-txt">
+      <div class="m-num">12,400+ members</div>
+      <div class="m-sub">already trading profitably</div>
+    </div>
+  </div>
+
+  <!-- RECENT TRADES PROOF -->
+  <div class="proof">
+    <div class="proof-head">Recent trade calls — this week</div>
+    <div class="trades">
+      <div class="trade">
+        <div class="trade-sym">BANKNIFTY CE</div>
+        <div class="trade-bar"><div class="trade-fill" style="width:95%"></div></div>
+        <div class="trade-pct">+340%</div>
+      </div>
+      <div class="trade">
+        <div class="trade-sym">NIFTY PE 22800</div>
+        <div class="trade-bar"><div class="trade-fill" style="width:75%"></div></div>
+        <div class="trade-pct">+185%</div>
+      </div>
+      <div class="trade">
+        <div class="trade-sym">RELIANCE CE</div>
+        <div class="trade-bar"><div class="trade-fill" style="width:60%"></div></div>
+        <div class="trade-pct">+92%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELEGRAM -->
+  <div class="tg">
+    <a href="https://t.me/optixtrade" class="tg-btn" target="_blank" rel="noopener noreferrer">
+      <div class="btn-ico">✈️</div>
+      <div class="btn-txt">
+        <div class="btn-main">Join Free Telegram Channel</div>
+        <div class="btn-sub">12,400+ members · Free daily calls</div>
+      </div>
+      <span class="btn-arrow">›</span>
+    </a>
+  </div>
+
+  <!-- DIVIDER -->
+  <div class="divider">
+    <span class="div-line"></span>
+    <span class="div-txt">Fire trades only</span>
+    <span class="div-line"></span>
+  </div>
+
+  <!-- OPTIONS CALLS -->
+  <div class="orange-wrap">
+    <a href="https://t.me/optixtrade" class="orange-btn" target="_blank" rel="noopener noreferrer">
+      <div class="btn-ico" style="background:#00000020">🔥</div>
+      <div class="btn-txt">
+        <div class="btn-main">Get Free OPTIONS Calls</div>
+        <div class="btn-sub">High accuracy · Entry + target + SL</div>
+      </div>
+      <span class="btn-arrow">›</span>
+    </a>
+  </div>
+
+  <!-- TESTIMONIALS -->
+  <div class="testimonials">
+    <div class="t-head">What members say</div>
+    <div class="t-cards">
+      <div class="t-card">
+        <div class="t-stars">★★★★★</div>
+        <div class="t-txt">Made 2x my investment in first month. Best calls in India.</div>
+        <div class="t-name">— Rahul K., Mumbai</div>
+      </div>
+      <div class="t-card">
+        <div class="t-stars">★★★★★</div>
+        <div class="t-txt">Finally profitable trading. The accuracy is real, not fake.</div>
+        <div class="t-name">— Amit S., Delhi</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="foot">
+    <div class="foot-hr"></div>
+    <div class="foot-txt">
+      © 2025 Optix Trades Official · All rights reserved.<br>
+      Trading involves risk. Past performance ≠ future results.
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
