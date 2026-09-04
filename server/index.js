@@ -696,13 +696,27 @@ const minContestParticipants = Number(process.env.MIN_CONTEST_PARTICIPANTS || 50
 const maxContestParticipants = Number(process.env.MAX_CONTEST_PARTICIPANTS || 500);
 const adminEmail = String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase();
 
-/** Invite-only: only these emails may sign up or log in. */
+/** Invite-only public signup: only these emails may self-register (OTP / Google new account). */
 const ACCESS_CLOSED_MESSAGE =
   "Access is invite-only. Kindly contact @optixadmin on Telegram for access.";
 const ACCESS_ALLOWED_EMAILS = new Set(
   ["badal@gmail.com", adminEmail].map((e) => String(e || "").trim().toLowerCase()).filter(Boolean),
 );
 const isAccessAllowedEmail = (email) => ACCESS_ALLOWED_EMAILS.has(String(email || "").trim().toLowerCase());
+
+/**
+ * Login allowed for:
+ * - invite allowlist (badal / admin), OR
+ * - any user already created (admin-created accounts can log in immediately).
+ */
+const canLoginEmail = (email) => {
+  const e = String(email || "")
+    .trim()
+    .toLowerCase();
+  if (!e) return false;
+  if (isAccessAllowedEmail(e)) return true;
+  return Boolean(getUserByEmail(e));
+};
 
 const marketHoursBypassEmails = new Set(["badal@gmail.com"]);
 
@@ -1171,7 +1185,7 @@ app.post("/auth/login", async (req, res) => {
     const emailNorm = String(email || "")
       .trim()
       .toLowerCase();
-    if (!isAccessAllowedEmail(emailNorm)) {
+    if (!canLoginEmail(emailNorm)) {
       return res.status(403).json({ status: "error", message: ACCESS_CLOSED_MESSAGE });
     }
 
@@ -1338,11 +1352,11 @@ app.get("/auth/google/callback", async (req, res) => {
     const sub = String(profile.sub || "");
     const avatarUrl = String(profile.picture || "").trim() || null;
     if (!email) throw new Error("Google did not return an email");
-    if (!isAccessAllowedEmail(email)) {
+    let user = getUserByEmail(email);
+    // Existing accounts (incl. admin-created) may Google-login; new Google signup stays invite-only.
+    if (!user && !isAccessAllowedEmail(email)) {
       return res.redirect(`${frontendOrigin}/login?error=access_closed`);
     }
-
-    let user = getUserByEmail(email);
     if (!user) {
       const passwordHash = await bcrypt.hash(randomUUID() + sub + jwtSecret, 10);
       user = createUser({
@@ -1356,6 +1370,7 @@ app.get("/auth/google/callback", async (req, res) => {
         realizedPnlInr: 0,
         avatarUrl,
         createdAt: new Date().toISOString(),
+        accessGrantedByAdmin: false,
       });
     } else if (sub) {
       const linked = updateUser(user.id, (prev) => ({ ...prev, googleSub: sub, avatarUrl: prev.avatarUrl || avatarUrl }));
@@ -2019,10 +2034,10 @@ app.get("/admin/users", authMiddleware, ensureAdmin, (req, res) => {
   });
 });
 
-/** Admin: create a user with email/password directly (login works immediately). */
+/** Admin: create a user with email/password + wallet (login works immediately; no public signup needed). */
 app.post("/admin/users/create", authMiddleware, ensureAdmin, async (req, res) => {
   try {
-    const { name, email, password } = req.body || {};
+    const { name, email, password, walletInr } = req.body || {};
     const nameTrim = String(name || "").trim();
     const emailNorm = String(email || "")
       .trim()
@@ -2043,20 +2058,29 @@ app.post("/admin/users/create", authMiddleware, ensureAdmin, async (req, res) =>
       return res.status(409).json({ status: "error", message: "Email already registered" });
     }
 
+    let wallet = Number(walletInr);
+    if (!Number.isFinite(wallet) || wallet < 0) {
+      wallet = virtualWalletForNewUser(emailNorm);
+    }
+    wallet = Number(wallet.toFixed(2));
+
     const passwordHash = await bcrypt.hash(pwd, 10);
     const created = createUser({
       id: randomUUID(),
       name: nameTrim,
       email: emailNorm,
       passwordHash,
-      walletInr: virtualWalletForNewUser(emailNorm),
+      walletInr: wallet,
       realWalletInr: 0,
       realizedPnlInr: 0,
       avatarUrl: null,
       createdAt: new Date().toISOString(),
+      accessGrantedByAdmin: true,
+      createdByAdminEmail: adminEmail,
     });
     return res.status(201).json({
       status: "ok",
+      message: "User created — they can log in with this email and password now.",
       user: {
         id: created.id,
         name: created.name,

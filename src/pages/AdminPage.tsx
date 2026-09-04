@@ -225,6 +225,7 @@ export default function AdminPage() {
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserWallet, setNewUserWallet] = useState("1000000");
   const [creatingUser, setCreatingUser] = useState(false);
 
   const authHeaders = useMemo(() => {
@@ -539,11 +540,13 @@ export default function AdminPage() {
 
       {err && <div className="mb-4 rounded border border-loss/30 bg-loss/10 p-3 text-sm text-loss">{err}</div>}
 
-      {adminTab === "settings" ? (
+      {adminTab === "settings" || adminTab === "users" ? (
         <div className="mb-4 rounded-xl border border-border bg-card p-4">
-          <div className="text-sm font-semibold">Create user account</div>
-          <p className="mt-1 text-xs text-muted-foreground">Admin can create a user with password for immediate login.</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="text-sm font-semibold">Create user account (admin only)</div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Public signup stays invite-only. Create email + password + starting paper wallet here — that user can log in immediately.
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <input
               className="rounded-md border border-border bg-background px-3 py-2 text-sm"
               placeholder="Full name"
@@ -558,10 +561,17 @@ export default function AdminPage() {
             />
             <input
               className="rounded-md border border-border bg-background px-3 py-2 text-sm"
-              placeholder="Password"
+              placeholder="Password (min 6)"
               type="text"
               value={newUserPassword}
               onChange={(e) => setNewUserPassword(e.target.value)}
+            />
+            <input
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm tabular-nums"
+              placeholder="Default wallet (INR)"
+              inputMode="numeric"
+              value={newUserWallet}
+              onChange={(e) => setNewUserWallet(e.target.value.replace(/[^\d.]/g, ""))}
             />
           </div>
           <button
@@ -573,6 +583,11 @@ export default function AdminPage() {
                 toast.error("Name, email and password are required");
                 return;
               }
+              const walletNum = Number(newUserWallet);
+              if (!Number.isFinite(walletNum) || walletNum < 0) {
+                toast.error("Enter a valid wallet amount (0 or more)");
+                return;
+              }
               setCreatingUser(true);
               try {
                 const r = await fetch(`${apiBase}/admin/users/create`, {
@@ -582,14 +597,21 @@ export default function AdminPage() {
                     name: newUserName.trim(),
                     email: newUserEmail.trim(),
                     password: newUserPassword,
+                    walletInr: walletNum,
                   }),
                 });
                 const d = await r.json().catch(() => ({}));
                 if (!r.ok) throw new Error(d?.message || "Could not create user");
-                toast.success("User account created");
+                const u = d?.user;
+                toast.success(
+                  u?.id
+                    ? `Created ${u.email} · id ${u.id} · ₹${Number(u.walletInr || 0).toLocaleString("en-IN")} — they can log in now`
+                    : "User account created — they can log in now",
+                );
                 setNewUserName("");
                 setNewUserEmail("");
                 setNewUserPassword("");
+                setNewUserWallet("1000000");
                 await refreshAdminListsAfterContestChange();
               } catch (e) {
                 toast.error(e instanceof Error ? e.message : "Could not create user");
