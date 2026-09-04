@@ -77,10 +77,10 @@ const ProfilePage: React.FC = () => {
     return parts.length >= 2 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : src.slice(0, 2).toUpperCase();
   }, [user?.name]);
   const walletLabel = `₹${Number(user?.walletInr ?? 0).toLocaleString('en-IN')}`;
-  const showVirtualWalletTools = canControlVirtualWallet(user?.email);
-  const showReportsPositionReset = canClearPaperPositions(user?.email);
-  const canReports = canOpenReports(user?.email);
-  const canAccountDetails = canOpenAccountDetails(user?.email);
+  const showVirtualWalletTools = canControlVirtualWallet(user);
+  const showReportsPositionReset = canClearPaperPositions(user);
+  const canReports = canOpenReports(user);
+  const canAccountDetails = canOpenAccountDetails(user);
 
   const userMenuItems = [
     ...menuItems.map((item) => (item.id === 'virtual' ? { ...item, label: walletLabel } : item)),

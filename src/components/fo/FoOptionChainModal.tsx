@@ -5,6 +5,7 @@ import type { Stock } from "@/data/mockData";
 import { toast } from "sonner";
 import { detectProvider } from "@/services/marketData";
 import { subscribeKiteMarket } from "@/services/kiteMarketWsHub";
+import { cn } from "@/lib/utils";
 
 export type FoContract = {
   id: string;
@@ -56,6 +57,7 @@ export default function FoOptionChainModal({
   /** Current chain expiry from last successful response (for Select display when override is null) */
   const [activeExpiryISO, setActiveExpiryISO] = useState("");
   const [expiries, setExpiries] = useState<ExpiryOption[]>([]);
+  const [underlyingLtp, setUnderlyingLtp] = useState<number | null>(null);
 
   const requestUnderlying = underlying.symbol;
   const provider = useMemo(() => detectProvider(), []);
@@ -76,6 +78,7 @@ export default function FoOptionChainModal({
     setActiveExpiryISO("");
     setExpiries([]);
     setRows([]);
+    setUnderlyingLtp(null);
   }, [open]);
 
   useEffect(() => {
@@ -106,6 +109,10 @@ export default function FoOptionChainModal({
         setApiExpiryLabel(String(data?.expiryLabel || expiryLabel));
         setActiveExpiryISO(String(data?.expiryISO || ""));
         setExpiries(Array.isArray(data?.expiries) ? data.expiries : []);
+        {
+          const ltp = Number(data?.underlyingLtp);
+          setUnderlyingLtp(Number.isFinite(ltp) && ltp > 0 ? ltp : Number(underlying.price) || null);
+        }
 
         const mappedRows = (data?.rows || []).map((r: any) => ({
           strike: Number(r.strike),
@@ -241,9 +248,77 @@ export default function FoOptionChainModal({
     </div>
   );
 
+  const displayLtp =
+    underlyingLtp != null && Number.isFinite(underlyingLtp) && underlyingLtp > 0
+      ? underlyingLtp
+      : Number(underlying.price) > 0
+        ? Number(underlying.price)
+        : null;
+
+  const chainTable = (scrollClass: string) => (
+    <div className={cn("mt-4 overflow-auto rounded-xl border border-border bg-card", scrollClass)}>
+      <div className="flex items-center justify-between px-4 py-3 text-xs text-muted-foreground">
+        <span>Call</span>
+        <span className="font-semibold text-foreground">Strike</span>
+        <span>Put</span>
+      </div>
+      <div className="divide-y divide-border">
+        {loading ? (
+          <div className="px-4 py-6 text-sm text-muted-foreground">Loading options...</div>
+        ) : (
+          rows.map((row) => (
+            <div key={row.strike} className="grid grid-cols-3 items-center px-4 py-3">
+              <button
+                type="button"
+                className="text-left text-sm text-profit disabled:opacity-50"
+                disabled={!row.CE}
+                onClick={() => row.CE && onSelect(row.CE)}
+              >
+                {row.CE ? `₹${row.CE.lastPrice.toFixed(2)}` : "—"}
+              </button>
+              <div className="text-center text-sm font-semibold text-foreground">{row.strike}</div>
+              <button
+                type="button"
+                className="text-right text-sm text-loss disabled:opacity-50"
+                disabled={!row.PE}
+                onClick={() => row.PE && onSelect(row.PE)}
+              >
+                {row.PE ? `₹${row.PE.lastPrice.toFixed(2)}` : "—"}
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  const headerBlock = (
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-muted-foreground">Options</p>
+        <h2 className="text-lg font-semibold text-foreground">
+          {underlying.symbol} {apiExpiryLabel}
+        </h2>
+        {displayLtp != null ? (
+          <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">
+            ₹{displayLtp.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <span className="ml-1.5 text-xs font-medium text-muted-foreground">current</span>
+          </p>
+        ) : null}
+        {expiryDropdown}
+      </div>
+      <button
+        type="button"
+        onClick={() => onOpenChange(false)}
+        className="shrink-0 rounded-md border border-border bg-card px-3 py-1 text-sm text-foreground"
+      >
+        Close
+      </button>
+    </div>
+  );
+
   return (
     <>
-      {/* Desktop modal */}
       {isDesktop && (
         <Dialog open={open} onOpenChange={onOpenChange}>
           <DialogContent
@@ -251,117 +326,17 @@ export default function FoOptionChainModal({
             overlayClassName="bg-black/45"
             showCloseButton={false}
           >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-muted-foreground">Options</p>
-              <h2 className="text-lg font-semibold text-foreground">
-                {underlying.symbol} {apiExpiryLabel}
-              </h2>
-              {expiryDropdown}
-            </div>
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="shrink-0 rounded-md border border-border bg-card px-3 py-1 text-sm text-foreground"
-            >
-              Close
-            </button>
-          </div>
-
-          <div className="mt-4 overflow-auto rounded-xl border border-border bg-card">
-            <div className="flex items-center justify-between px-4 py-3 text-xs text-muted-foreground">
-              <span>Call</span>
-              <span className="font-semibold text-foreground">Strike</span>
-              <span>Put</span>
-            </div>
-
-            <div className="divide-y divide-border">
-              {loading ? (
-                <div className="px-4 py-6 text-sm text-muted-foreground">Loading options...</div>
-              ) : (
-                rows.map((row) => (
-                  <div key={row.strike} className="grid grid-cols-3 items-center px-4 py-3">
-                    <button
-                      type="button"
-                      className="text-left text-sm text-profit disabled:opacity-50"
-                      disabled={!row.CE}
-                      onClick={() => row.CE && onSelect(row.CE)}
-                    >
-                      {row.CE ? `₹${row.CE.lastPrice.toFixed(2)}` : "—"}
-                    </button>
-                    <div className="text-center text-sm font-semibold text-foreground">{row.strike}</div>
-                    <button
-                      type="button"
-                      className="text-right text-sm text-loss disabled:opacity-50"
-                      disabled={!row.PE}
-                      onClick={() => row.PE && onSelect(row.PE)}
-                    >
-                      {row.PE ? `₹${row.PE.lastPrice.toFixed(2)}` : "—"}
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+            {headerBlock}
+            {chainTable("")}
           </DialogContent>
         </Dialog>
       )}
 
-      {/* Mobile bottom sheet */}
       {!isDesktop && (
         <Sheet open={open} onOpenChange={onOpenChange}>
           <SheetContent side="bottom" showCloseButton={false}>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-muted-foreground">Options</p>
-              <h2 className="text-lg font-semibold text-foreground">
-                {underlying.symbol} {apiExpiryLabel}
-              </h2>
-              {expiryDropdown}
-            </div>
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="shrink-0 rounded-md border border-border bg-card px-3 py-1 text-sm text-foreground"
-            >
-              Close
-            </button>
-          </div>
-
-          <div className="mt-4 max-h-[65vh] overflow-auto rounded-xl border border-border bg-card">
-            <div className="flex items-center justify-between px-4 py-3 text-xs text-muted-foreground">
-              <span>Call</span>
-              <span className="font-semibold text-foreground">Strike</span>
-              <span>Put</span>
-            </div>
-            <div className="divide-y divide-border">
-              {loading ? (
-                <div className="px-4 py-6 text-sm text-muted-foreground">Loading options...</div>
-              ) : (
-                rows.map((row) => (
-                  <div key={row.strike} className="grid grid-cols-3 items-center px-4 py-3">
-                    <button
-                      type="button"
-                      className="text-left text-sm text-profit disabled:opacity-50"
-                      disabled={!row.CE}
-                      onClick={() => row.CE && onSelect(row.CE)}
-                    >
-                      {row.CE ? `₹${row.CE.lastPrice.toFixed(2)}` : "—"}
-                    </button>
-                    <div className="text-center text-sm font-semibold text-foreground">{row.strike}</div>
-                    <button
-                      type="button"
-                      className="text-right text-sm text-loss disabled:opacity-50"
-                      disabled={!row.PE}
-                      onClick={() => row.PE && onSelect(row.PE)}
-                    >
-                      {row.PE ? `₹${row.PE.lastPrice.toFixed(2)}` : "—"}
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+            {headerBlock}
+            {chainTable("max-h-[65vh]")}
           </SheetContent>
         </Sheet>
       )}

@@ -9,6 +9,10 @@ type AuthUser = {
   avatarUrl?: string | null;
   /** Cumulative realized P&L from exited paper positions (server). */
   realizedPnlInr: number;
+  /** Admin-toggled: Account Details / adjust paper wallet. */
+  canAdjustWallet?: boolean;
+  /** Admin-toggled: swipe-clear exited positions. */
+  canClearPositions?: boolean;
 };
 
 type LoginPayload = { email: string; password: string };
@@ -41,6 +45,8 @@ const normalizeUser = (u: any): AuthUser => ({
   realWalletInr: Number(u?.realWalletInr ?? 0),
   realizedPnlInr: Number(u?.realizedPnlInr ?? 0),
   avatarUrl: u?.avatarUrl || null,
+  canAdjustWallet: Boolean(u?.canAdjustWallet),
+  canClearPositions: Boolean(u?.canClearPositions),
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

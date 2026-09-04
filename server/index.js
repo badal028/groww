@@ -167,6 +167,38 @@ const VIRTUAL_WALLET_CONTROL_EMAILS = new Set(
   ),
 );
 
+/** Legacy hard allowlist OR per-user admin toggles. */
+const canUserAdjustWallet = (user) => {
+  const em = String(user?.email || "")
+    .trim()
+    .toLowerCase();
+  if (VIRTUAL_WALLET_CONTROL_EMAILS.has(em)) return true;
+  return Boolean(user?.canAdjustWallet);
+};
+
+const canUserClearPositions = (user) => {
+  const em = String(user?.email || "")
+    .trim()
+    .toLowerCase();
+  if (VIRTUAL_WALLET_CONTROL_EMAILS.has(em)) return true;
+  return Boolean(user?.canClearPositions);
+};
+
+const publicAuthUser = (user) => {
+  const u = ensureUserFinancials(user);
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    walletInr: Number(u.walletInr || 0),
+    realWalletInr: Number(u.realWalletInr || 0),
+    realizedPnlInr: Number(u.realizedPnlInr || 0),
+    avatarUrl: u.avatarUrl || null,
+    canAdjustWallet: canUserAdjustWallet(u),
+    canClearPositions: canUserClearPositions(u),
+  };
+};
+
 const currentPracticeContestForApi = () => {
   const today = activeContestDateISO();
   const users = getAllUsers();
@@ -1208,15 +1240,7 @@ app.post("/auth/login", async (req, res) => {
     return res.json({
       status: "ok",
       token,
-      user: {
-        id: normalizedUser.id,
-        name: normalizedUser.name,
-        email: normalizedUser.email,
-        walletInr: normalizedUser.walletInr,
-        realWalletInr: normalizedUser.realWalletInr,
-        realizedPnlInr: Number(normalizedUser.realizedPnlInr || 0),
-        avatarUrl: normalizedUser.avatarUrl || null,
-      },
+      user: publicAuthUser(normalizedUser),
     });
   } catch (error) {
     return res.status(500).json({ status: "error", message: error?.message || "Login failed" });
@@ -1286,15 +1310,7 @@ app.get("/auth/me", authMiddleware, (req, res) => {
   const user = ensureUserFinancials(persisted || req.user);
   res.json({
     status: "ok",
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      walletInr: user.walletInr,
-      realWalletInr: Number(user.realWalletInr || 0),
-      realizedPnlInr: Number(user.realizedPnlInr || 0),
-      avatarUrl: user.avatarUrl || null,
-    },
+    user: publicAuthUser(user),
   });
 });
 
@@ -1827,15 +1843,7 @@ app.patch("/auth/profile", authMiddleware, (req, res) => {
   if (!updated) return res.status(404).json({ status: "error", message: "User not found" });
   return res.json({
     status: "ok",
-    user: {
-      id: updated.id,
-      name: updated.name,
-      email: updated.email,
-      walletInr: Number(updated.walletInr || 0),
-      realWalletInr: Number(updated.realWalletInr || 0),
-      realizedPnlInr: Number(updated.realizedPnlInr || 0),
-      avatarUrl: updated.avatarUrl || null,
-    },
+    user: publicAuthUser(updated),
   });
 });
 
@@ -1889,12 +1897,9 @@ app.get("/paper/positions", authMiddleware, (req, res) => {
   res.json({ status: "ok", positions });
 });
 
-/** Clear all paper positions (same allowlist as virtual wallet). Midnight IST prune still applies for exited rows. */
+/** Clear all paper positions (hard allowlist OR admin toggle canClearPositions). */
 app.post("/paper/positions/clear", authMiddleware, (req, res) => {
-  const em = String(req.user.email || "")
-    .trim()
-    .toLowerCase();
-  if (!VIRTUAL_WALLET_CONTROL_EMAILS.has(em)) {
+  if (!canUserClearPositions(req.user)) {
     return res.status(403).json({ status: "error", message: "Position reset not enabled for this account" });
   }
   const updated = updateUser(req.user.id, (prev) => ({
@@ -1906,13 +1911,10 @@ app.post("/paper/positions/clear", authMiddleware, (req, res) => {
   return res.json({ status: "ok", positions: [] });
 });
 
-/** Set or add virtual (paper) wallet for allowlisted demo accounts only. */
+/** Set or add virtual (paper) wallet (hard allowlist OR admin toggle canAdjustWallet). */
 app.post("/paper/wallet/virtual", authMiddleware, (req, res) => {
   try {
-    const em = String(req.user.email || "")
-      .trim()
-      .toLowerCase();
-    if (!VIRTUAL_WALLET_CONTROL_EMAILS.has(em)) {
+    if (!canUserAdjustWallet(req.user)) {
       return res.status(403).json({ status: "error", message: "Virtual wallet control not enabled for this account" });
     }
     const { setInr, addInr } = req.body || {};
@@ -2037,7 +2039,7 @@ app.get("/admin/users", authMiddleware, ensureAdmin, (req, res) => {
 /** Admin: create a user with email/password + wallet (login works immediately; no public signup needed). */
 app.post("/admin/users/create", authMiddleware, ensureAdmin, async (req, res) => {
   try {
-    const { name, email, password, walletInr } = req.body || {};
+    const { name, email, password, walletInr, canAdjustWallet, canClearPositions } = req.body || {};
     const nameTrim = String(name || "").trim();
     const emailNorm = String(email || "")
       .trim()
@@ -2077,6 +2079,8 @@ app.post("/admin/users/create", authMiddleware, ensureAdmin, async (req, res) =>
       createdAt: new Date().toISOString(),
       accessGrantedByAdmin: true,
       createdByAdminEmail: adminEmail,
+      canAdjustWallet: Boolean(canAdjustWallet),
+      canClearPositions: Boolean(canClearPositions),
     });
     return res.status(201).json({
       status: "ok",
@@ -2086,10 +2090,55 @@ app.post("/admin/users/create", authMiddleware, ensureAdmin, async (req, res) =>
         name: created.name,
         email: created.email,
         walletInr: Number(created.walletInr || 0),
+        canAdjustWallet: canUserAdjustWallet(created),
+        canClearPositions: canUserClearPositions(created),
       },
     });
   } catch (e) {
     return res.status(500).json({ status: "error", message: e?.message || "User creation failed" });
+  }
+});
+
+/** Admin: toggle Account Details / clear-position permissions for a user. */
+app.post("/admin/users/permissions", authMiddleware, ensureAdmin, (req, res) => {
+  try {
+    const userId = String(req.body?.userId || "").trim();
+    if (!userId) return res.status(400).json({ status: "error", message: "userId is required" });
+    const user = getUserById(userId);
+    if (!user) return res.status(404).json({ status: "error", message: "User not found" });
+
+    const hasAdjust = Object.prototype.hasOwnProperty.call(req.body || {}, "canAdjustWallet");
+    const hasClear = Object.prototype.hasOwnProperty.call(req.body || {}, "canClearPositions");
+    if (!hasAdjust && !hasClear) {
+      return res.status(400).json({ status: "error", message: "Provide canAdjustWallet and/or canClearPositions" });
+    }
+
+    const updated = updateUser(userId, (prev) => ({
+      ...prev,
+      ...(hasAdjust ? { canAdjustWallet: Boolean(req.body.canAdjustWallet) } : {}),
+      ...(hasClear ? { canClearPositions: Boolean(req.body.canClearPositions) } : {}),
+      updatedAt: new Date().toISOString(),
+    }));
+    if (!updated) return res.status(404).json({ status: "error", message: "User not found" });
+
+    return res.json({
+      status: "ok",
+      user: {
+        id: updated.id,
+        email: updated.email,
+        canAdjustWallet: canUserAdjustWallet(updated),
+        canClearPositions: canUserClearPositions(updated),
+        canAdjustWalletStored: Boolean(updated.canAdjustWallet),
+        canClearPositionsStored: Boolean(updated.canClearPositions),
+        lockedByHardAllowlist: VIRTUAL_WALLET_CONTROL_EMAILS.has(
+          String(updated.email || "")
+            .trim()
+            .toLowerCase(),
+        ),
+      },
+    });
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: e?.message || "Update failed" });
   }
 });
 
@@ -2834,6 +2883,15 @@ app.get("/admin/users/:id/detail", authMiddleware, ensureAdmin, async (req, res)
       openPnlInr,
       totalPnlInr: Number((realizedPnlInr + openPnlInr).toFixed(2)),
       hiddenFromLeaderboard: !isLeaderboardParticipantUser(user),
+      canAdjustWallet: canUserAdjustWallet(user),
+      canClearPositions: canUserClearPositions(user),
+      canAdjustWalletStored: Boolean(user.canAdjustWallet),
+      canClearPositionsStored: Boolean(user.canClearPositions),
+      lockedByHardAllowlist: VIRTUAL_WALLET_CONTROL_EMAILS.has(
+        String(user.email || "")
+          .trim()
+          .toLowerCase(),
+      ),
     },
     positions: enriched,
   });
@@ -2982,13 +3040,10 @@ app.post("/paper/position/close", authMiddleware, (req, res) => {
   }
 });
 
-/** Remove an exited position from the list (privileged accounts only). */
+/** Remove an exited position from the list (hard allowlist OR admin toggle canClearPositions). */
 app.post("/paper/position/dismiss", authMiddleware, (req, res) => {
   try {
-    const em = String(req.user.email || "")
-      .trim()
-      .toLowerCase();
-    if (!VIRTUAL_WALLET_CONTROL_EMAILS.has(em)) {
+    if (!canUserClearPositions(req.user)) {
       return res.status(403).json({ status: "error", message: "Clear position is not available for this account" });
     }
     const { instrumentKey } = req.body || {};

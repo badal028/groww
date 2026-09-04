@@ -117,7 +117,7 @@ type Props = {
 const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compact }) => {
   const navigate = useNavigate();
   const { token, refreshMe, user } = useAuth();
-  const canClearPositions = canClearPaperPositions(user?.email);
+  const canClearPositions = canClearPaperPositions(user);
   const [exitingKey, setExitingKey] = useState<string | null>(null);
   const [clearingKey, setClearingKey] = useState<string | null>(null);
   const { mktByInstrumentKey } = usePositionMktPrices(positions);

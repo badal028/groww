@@ -86,6 +86,11 @@ type UserDetail = {
   openPnlInr: number;
   totalPnlInr: number;
   hiddenFromLeaderboard?: boolean;
+  canAdjustWallet?: boolean;
+  canClearPositions?: boolean;
+  canAdjustWalletStored?: boolean;
+  canClearPositionsStored?: boolean;
+  lockedByHardAllowlist?: boolean;
 };
 
 type DailySignupRow = {
@@ -226,7 +231,10 @@ export default function AdminPage() {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserWallet, setNewUserWallet] = useState("1000000");
+  const [newUserCanAdjustWallet, setNewUserCanAdjustWallet] = useState(false);
+  const [newUserCanClearPositions, setNewUserCanClearPositions] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
+  const [savingPerms, setSavingPerms] = useState(false);
 
   const authHeaders = useMemo(() => {
     if (!token) return {};
@@ -574,6 +582,24 @@ export default function AdminPage() {
               onChange={(e) => setNewUserWallet(e.target.value.replace(/[^\d.]/g, ""))}
             />
           </div>
+          <div className="mt-3 flex flex-wrap gap-4 text-xs text-foreground">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={newUserCanAdjustWallet}
+                onChange={(e) => setNewUserCanAdjustWallet(e.target.checked)}
+              />
+              Allow Account Details / update balance
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={newUserCanClearPositions}
+                onChange={(e) => setNewUserCanClearPositions(e.target.checked)}
+              />
+              Allow clear exited positions (swipe)
+            </label>
+          </div>
           <button
             type="button"
             className="mt-3 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60"
@@ -598,6 +624,8 @@ export default function AdminPage() {
                     email: newUserEmail.trim(),
                     password: newUserPassword,
                     walletInr: walletNum,
+                    canAdjustWallet: newUserCanAdjustWallet,
+                    canClearPositions: newUserCanClearPositions,
                   }),
                 });
                 const d = await r.json().catch(() => ({}));
@@ -612,6 +640,8 @@ export default function AdminPage() {
                 setNewUserEmail("");
                 setNewUserPassword("");
                 setNewUserWallet("1000000");
+                setNewUserCanAdjustWallet(false);
+                setNewUserCanClearPositions(false);
                 await refreshAdminListsAfterContestChange();
               } catch (e) {
                 toast.error(e instanceof Error ? e.message : "Could not create user");
@@ -1261,6 +1291,88 @@ export default function AdminPage() {
                         >
                           Delete
                         </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-lg border border-border bg-background px-3 py-3">
+                      <div className="text-sm font-semibold text-foreground">Permissions</div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Enable Account Details (update balance) and swipe-clear for exited positions.
+                        {userDetail.lockedByHardAllowlist
+                          ? " This email is always on (hard allowlist: badal / admin)."
+                          : ""}
+                      </p>
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-6">
+                        <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                          <input
+                            type="checkbox"
+                            disabled={Boolean(userDetail.lockedByHardAllowlist) || savingPerms}
+                            checked={Boolean(userDetail.canAdjustWallet)}
+                            onChange={async (e) => {
+                              const next = e.target.checked;
+                              setSavingPerms(true);
+                              try {
+                                const r = await fetch(`${apiBase}/admin/users/permissions`, {
+                                  method: "POST",
+                                  headers: { ...authHeaders, "Content-Type": "application/json" },
+                                  body: JSON.stringify({ userId: userDetail.id, canAdjustWallet: next }),
+                                });
+                                const d = await r.json().catch(() => ({}));
+                                if (!r.ok) throw new Error(d?.message || "Could not update permission");
+                                setUserDetail((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        canAdjustWallet: Boolean(d?.user?.canAdjustWallet),
+                                        canAdjustWalletStored: Boolean(d?.user?.canAdjustWalletStored),
+                                      }
+                                    : prev,
+                                );
+                                toast.success(next ? "Balance update enabled" : "Balance update disabled");
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : "Update failed");
+                              } finally {
+                                setSavingPerms(false);
+                              }
+                            }}
+                          />
+                          Allow Account Details / update balance
+                        </label>
+                        <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                          <input
+                            type="checkbox"
+                            disabled={Boolean(userDetail.lockedByHardAllowlist) || savingPerms}
+                            checked={Boolean(userDetail.canClearPositions)}
+                            onChange={async (e) => {
+                              const next = e.target.checked;
+                              setSavingPerms(true);
+                              try {
+                                const r = await fetch(`${apiBase}/admin/users/permissions`, {
+                                  method: "POST",
+                                  headers: { ...authHeaders, "Content-Type": "application/json" },
+                                  body: JSON.stringify({ userId: userDetail.id, canClearPositions: next }),
+                                });
+                                const d = await r.json().catch(() => ({}));
+                                if (!r.ok) throw new Error(d?.message || "Could not update permission");
+                                setUserDetail((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        canClearPositions: Boolean(d?.user?.canClearPositions),
+                                        canClearPositionsStored: Boolean(d?.user?.canClearPositionsStored),
+                                      }
+                                    : prev,
+                                );
+                                toast.success(next ? "Clear positions enabled" : "Clear positions disabled");
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : "Update failed");
+                              } finally {
+                                setSavingPerms(false);
+                              }
+                            }}
+                          />
+                          Allow clear exited positions (swipe)
+                        </label>
                       </div>
                     </div>
 
