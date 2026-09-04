@@ -82,6 +82,12 @@ const ProfilePage: React.FC = () => {
   const canReports = canOpenReports(user);
   const canAccountDetails = canOpenAccountDetails(user);
 
+  // Re-fetch permissions after admin toggles them (stale session otherwise).
+  useEffect(() => {
+    if (!token) return;
+    void refreshMe();
+  }, [token, refreshMe]);
+
   const userMenuItems = [
     ...menuItems.map((item) => (item.id === 'virtual' ? { ...item, label: walletLabel } : item)),
     ...(isAdminEmail(user?.email)

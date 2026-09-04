@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   additionalSearchStocks,
@@ -128,6 +128,11 @@ const PositionsPanel: React.FC<Props> = ({ positions, loading, className, compac
   const [foOpenWithSide, setFoOpenWithSide] = useState<"BUY" | "SELL">("BUY");
   const [ocOpen, setOcOpen] = useState(false);
   const [ocStock, setOcStock] = useState<Stock | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    void refreshMe();
+  }, [token, refreshMe]);
 
   const rows = useMemo(() => {
     return positions
