@@ -3734,32 +3734,17 @@ app.put("/kite-app/watchlists/:group", authMiddleware, (req, res) => {
   }
 });
 
-const KA_PROFILE_OVERRIDES = {
-  "pbadal392@gmail.com": { clientId: "AVN351", displayEmail: "aninash.trader441023@gmail.com" },
+/** Same display profile for every user of the Kite-style app. */
+const KA_STATIC_PROFILE = {
+  clientId: "AVN351",
+  name: "Badal Prajapati",
+  email: "aninash.trader441023@gmail.com",
 };
 
-const kaClientId = (user) => {
-  const email = String(user?.email || "").trim().toLowerCase();
-  const override = KA_PROFILE_OVERRIDES[email];
-  if (override?.clientId) return override.clientId;
-  let h = 7;
-  for (const ch of `${user?.id || ""}${email}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-  return `${letters[h % letters.length]}${letters[(h >>> 5) % letters.length]}${letters[(h >>> 10) % letters.length]}${String(100 + ((h >>> 3) % 900))}`;
-};
+const kaClientId = () => KA_STATIC_PROFILE.clientId;
 
-app.get("/kite-app/profile", authMiddleware, (req, res) => {
-  const email = String(req.user?.email || "").trim().toLowerCase();
-  const override = KA_PROFILE_OVERRIDES[email];
-  const clientId = kaClientId(req.user);
-  return res.json({
-    status: "ok",
-    profile: {
-      clientId,
-      name: req.user.name || email.split("@")[0],
-      email: override?.displayEmail || email,
-    },
-  });
+app.get("/kite-app/profile", authMiddleware, (_req, res) => {
+  return res.json({ status: "ok", profile: { ...KA_STATIC_PROFILE } });
 });
 
 /** Log a REJECTED order (insufficient funds). Re-verifies the shortfall server-side. */
