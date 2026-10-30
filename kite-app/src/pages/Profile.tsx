@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import {
   IconBack,
@@ -30,10 +31,11 @@ const initials = (name: string) =>
 export default function Profile() {
   const { user, profile, privacy, setPrivacy, logout } = useApp();
   const nav = useNavigate();
-  const [funds, setFunds] = useState(false);
+  const [view, setView] = useState<"main" | "funds" | "appcode">("main");
   const name = profile?.name || user?.name || "";
 
-  if (funds) return <Funds onBack={() => setFunds(false)} />;
+  if (view === "funds") return <Funds onBack={() => setView("main")} />;
+  if (view === "appcode") return <WalletEditor onBack={() => setView("main")} />;
 
   const doLogout = () => {
     logout();
@@ -67,8 +69,8 @@ export default function Profile() {
         </div>
 
         <div className="pf-sec">Account</div>
-        <MenuItem label="Funds" Icon={IconRupee} onClick={() => setFunds(true)} />
-        <MenuItem label="App Code" Icon={IconLock} />
+        <MenuItem label="Funds" Icon={IconRupee} onClick={() => setView("funds")} />
+        <MenuItem label="App Code" Icon={IconLock} onClick={() => setView("appcode")} />
         <MenuItem label="Profile" Icon={IconUser} />
         <MenuItem label="Settings" Icon={IconGear} />
         <MenuItem label="Connected apps" Icon={IconCube} />
@@ -110,6 +112,82 @@ function MenuItem({ label, Icon, onClick }: { label: string; Icon: (p: { size?: 
         <Icon size={19} />
       </span>
     </button>
+  );
+}
+
+function WalletEditor({ onBack }: { onBack: () => void }) {
+  const { user, refreshUser, toast } = useApp();
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const allowed = Boolean(user?.canAdjustWallet);
+
+  useEffect(() => {
+    void refreshUser().catch(() => undefined);
+  }, [refreshUser]);
+
+  const submit = async (mode: "add" | "set") => {
+    const n = Number(amount);
+    if (!amount.trim() || !Number.isFinite(n) || (mode === "set" && n < 0)) {
+      toast("Enter a valid amount", "error");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api("/paper/wallet/virtual", { method: "POST", json: mode === "add" ? { addInr: n } : { setInr: n } });
+      await refreshUser();
+      setAmount("");
+      toast(mode === "add" ? "Funds added" : "Balance updated");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Update failed", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="screen profile">
+      <div className="os-head">
+        <button type="button" className="icon-btn" onClick={onBack} aria-label="Back">
+          <IconBack size={20} />
+        </button>
+        <div className="os-title">App Code</div>
+        <span />
+      </div>
+      <div className="screen-body">
+        <div className="funds-card">
+          <div className="funds-label">Available margin</div>
+          <div className="funds-big c-blue">₹{fmt(user?.walletInr ?? 0)}</div>
+          {allowed ? (
+            <>
+              <div className="os-label-row">
+                <span className="os-label">Amount</span>
+              </div>
+              <div className="os-input-row">
+                <input
+                  className="os-input"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.-]/g, ""))}
+                />
+              </div>
+              <div className="wallet-actions">
+                <button type="button" className="btn btn-blue" disabled={busy} onClick={() => void submit("add")}>
+                  Add funds
+                </button>
+                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => void submit("set")}>
+                  Set balance
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="c-light" style={{ fontSize: 13 }}>
+              Editing funds is not enabled for this account.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

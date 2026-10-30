@@ -7,7 +7,7 @@ type Props = {
   onSwipe: () => void;
 };
 
-const KNOB = 40;
+const KNOB = 48;
 const PAD = 3;
 
 export function SwipeButton({ side, loading, onSwipe }: Props) {

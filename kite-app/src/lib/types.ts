@@ -86,6 +86,8 @@ export type User = {
   email: string;
   walletInr: number;
   realizedPnlInr: number;
+  canAdjustWallet?: boolean;
+  canClearPositions?: boolean;
 };
 
 export type Profile = { clientId: string; name: string; email: string };

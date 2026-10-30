@@ -263,6 +263,12 @@ sup {
 .ix {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+}
+.ix:first-child {
+  flex: 0 0 auto;
+  max-width: 56%;
+  padding-right: 14px;
 }
 .ix-name {
   font-size: 13px;
@@ -274,7 +280,7 @@ sup {
   line-height: 22px;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
 }
 .ix-ch {
   color: var(--light);
@@ -707,12 +713,12 @@ sup {
 }
 .is-actions {
   display: flex;
-  gap: 16px;
-  padding: 14px 16px;
+  gap: 20px;
+  padding: 14px 30px;
 }
 .btn {
   flex: 1;
-  height: 40px;
+  height: 46px;
   border-radius: 3px;
   font-size: 14.5px;
   font-weight: 600;
@@ -1079,7 +1085,7 @@ sup {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px 14px 30px;
+  padding: 12px 16px 16px 46px;
   background: #fff;
 }
 .os-lotrow {
@@ -1110,8 +1116,8 @@ sup {
 .swipe {
   position: relative;
   flex: 1;
-  height: 46px;
-  border-radius: 23px;
+  height: 54px;
+  border-radius: 27px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1126,7 +1132,7 @@ sup {
   background: var(--red);
 }
 .swipe.loading {
-  flex: 0 0 46px;
+  flex: 0 0 54px;
   margin: 0 auto;
 }
 .swipe-label {
@@ -1140,8 +1146,8 @@ sup {
   position: absolute;
   left: 3px;
   top: 3px;
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: #fff;
   display: flex;
@@ -1449,7 +1455,7 @@ sup {
   color: var(--green);
 }
 .pos-row {
-  padding: 12px 14px 10px;
+  padding: 15px 14px 13px;
   border-bottom: 1px solid var(--border-2);
   cursor: pointer;
 }
@@ -1647,4 +1653,133 @@ sup {
 .funds-big {
   font-size: 26px;
   margin: 4px 0 12px;
+}
+
+/* ---------- swipe to clear ---------- */
+.swipe-clear {
+  position: relative;
+  overflow: hidden;
+}
+.sc-panel {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4f4f4;
+}
+.sc-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text);
+}
+.sc-btn:disabled {
+  opacity: 0.5;
+}
+.sc-front {
+  position: relative;
+  background: #fff;
+  transition: transform 0.2s ease-out;
+  touch-action: pan-y;
+}
+.sc-front.dragging {
+  transition: none;
+}
+
+/* ---------- holdings ---------- */
+.hold-card {
+  margin: 10px 8px;
+  padding: 14px 14px 12px;
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+.hold-top {
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.hold-top .r {
+  text-align: right;
+}
+.hold-label {
+  font-size: 12.5px;
+  color: var(--light);
+}
+.hold-val {
+  font-size: 17px;
+  color: var(--text);
+  margin-top: 2px;
+}
+.hold-pnl {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 10px;
+}
+.hold-pnl-val {
+  font-size: 17px;
+}
+.hold-pill {
+  margin-left: 8px;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  vertical-align: 2px;
+}
+.hold-pill.pos {
+  background: #e7f5e8;
+  color: var(--green);
+}
+.hold-pill.neg {
+  background: #ffebe5;
+  color: var(--loss);
+}
+.hold-equity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.hold-rowpct {
+  font-size: 12.5px;
+}
+.hold-auth {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 14px;
+  color: var(--blue);
+  font-size: 13.5px;
+}
+.hold-day {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: #fff;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  z-index: 4;
+}
+
+.wallet-actions {
+  display: flex;
+  gap: 14px;
+  margin-top: 6px;
+}
+.btn-outline {
+  background: #fff;
+  color: var(--blue);
+  border: 1px solid var(--blue);
 }
