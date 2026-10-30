@@ -1442,6 +1442,12 @@ sup {
   margin-top: 2px;
   color: var(--text);
 }
+.pnl-value.c-loss {
+  color: var(--loss);
+}
+.pnl-value.c-green {
+  color: var(--green);
+}
 .pos-row {
   padding: 10px 12px 8px;
   border-bottom: 1px solid var(--border-2);
