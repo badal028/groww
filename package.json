@@ -8,6 +8,8 @@
     "server": "node server/index.js",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "kite:dev": "vite --config kite-app/vite.config.ts",
+    "kite:build": "vite build --config kite-app/vite.config.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",

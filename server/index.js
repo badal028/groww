@@ -500,7 +500,10 @@ const parseCSV = (csvText) => {
     const strike = strikeRaw ? Number(strikeRaw) : null;
     const tokenRaw = idx.instrument_token != null ? stripQuotes(parts[idx.instrument_token]) : "";
     const instrument_token = tokenRaw ? Number(tokenRaw) : null;
+    const lotRaw = idx.lot_size != null ? stripQuotes(parts[idx.lot_size]) : "";
+    const lot_size = lotRaw ? Number(lotRaw) : null;
     rows.push({
+      lot_size: Number.isFinite(lot_size) && lot_size > 0 ? lot_size : 1,
       segment,
       exchange,
       tradingsymbol,
@@ -3221,6 +3224,7 @@ app.post("/paper/order", authMiddleware, (req, res) => {
       if (!existingPos.openedAt) existingPos.openedAt = nowISO;
       existingPos.lastTradedAt = nowISO;
       if (kiteSymNorm) existingPos.kiteSymbol = kiteSymNorm;
+      if (!existingPos.product) existingPos.product = orderPayload.product;
 
       if (orderPayload.side === "BUY") {
         if (walletInr < notional) {
@@ -3265,6 +3269,7 @@ app.post("/paper/order", authMiddleware, (req, res) => {
         notional,
         status: "FILLED",
         filledAt: new Date().toISOString(),
+        ...(kiteSymNorm ? { kiteSymbol: kiteSymNorm } : {}),
       };
       orders.push(newOrder);
 
@@ -3479,6 +3484,328 @@ app.get("/api/index-fo-expiry-tags", ensureAuth, async (_req, res) => {
     return res.json({ status: "ok", todayIst, tags });
   } catch (error) {
     return res.status(500).json({ status: "error", message: error?.message || "Index expiry tags failed" });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Kite-style app (pro.growwtrader.in) helper endpoints               */
+/* ------------------------------------------------------------------ */
+const KA_MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+const KA_EXCHANGES = new Set(["NSE", "BSE", "NFO", "BFO"]);
+const KA_POPULAR_INDICES = new Set([
+  "NIFTY 50",
+  "NIFTY BANK",
+  "SENSEX",
+  "NIFTY FIN SERVICE",
+  "NIFTY MID SELECT",
+  "NIFTY NEXT 50",
+  "BANKEX",
+  "INDIA VIX",
+]);
+const kaOrdinal = (d) => {
+  const n = Number(d);
+  const s = n % 100;
+  if (s >= 11 && s <= 13) return `${n}th`;
+  return `${n}${n % 10 === 1 ? "st" : n % 10 === 2 ? "nd" : n % 10 === 3 ? "rd" : "th"}`;
+};
+
+let kaIndex = null;
+let kaIndexSourceRef = null;
+
+const getKaIndex = async () => {
+  const rows = await loadKiteInstruments();
+  if (kaIndex && kaIndexSourceRef === rows) return kaIndex;
+  const list = [];
+  const monthlyMax = new Map(); // `${exchange}|${name}|${YYYY-MM}` -> max expiry ISO
+  for (const r of rows) {
+    if (!KA_EXCHANGES.has(r.exchange) || !r.tradingsymbol) continue;
+    const seg = String(r.segment || "").toUpperCase();
+    const isDeriv = r.exchange === "NFO" || r.exchange === "BFO";
+    if (isDeriv) {
+      if (!["CE", "PE", "FUT"].includes(r.instrument_type)) continue;
+      const iso = parseExpiryToISO(r.expiry);
+      if (!iso) continue;
+      r._iso = iso;
+      const k = `${r.exchange}|${r.name}|${iso.slice(0, 7)}`;
+      const prev = monthlyMax.get(k);
+      if (!prev || iso > prev) monthlyMax.set(k, iso);
+    } else if (seg !== "INDICES" && r.instrument_type !== "EQ") {
+      continue;
+    }
+    list.push(r);
+  }
+  const hays = new Array(list.length);
+  for (let i = 0; i < list.length; i++) {
+    const r = list[i];
+    if (r._iso) {
+      const d = Number(r._iso.slice(8, 10));
+      const mon = KA_MONTHS[Number(r._iso.slice(5, 7)) - 1];
+      hays[i] = `${r.name} ${r.tradingsymbol} ${kaOrdinal(d)} ${d} ${mon} ${r.strike || ""} ${r.instrument_type}`.toLowerCase();
+    } else {
+      hays[i] = `${r.tradingsymbol} ${r.name || ""}`.toLowerCase();
+    }
+  }
+  const byKey = new Map();
+  for (const r of list) byKey.set(`${r.exchange}:${r.tradingsymbol}`, r);
+  kaIndex = { list, hays, monthlyMax, byKey };
+  kaIndexSourceRef = rows;
+  return kaIndex;
+};
+
+const kaDescribe = (r, idx) => {
+  const key = `${r.exchange}:${r.tradingsymbol}`;
+  const seg = String(r.segment || "").toUpperCase();
+  const isDeriv = r.exchange === "NFO" || r.exchange === "BFO";
+  if (isDeriv && r._iso) {
+    const d = Number(r._iso.slice(8, 10));
+    const mon = KA_MONTHS[Number(r._iso.slice(5, 7)) - 1];
+    const monthlyIso = idx.monthlyMax.get(`${r.exchange}|${r.name}|${r._iso.slice(0, 7)}`);
+    const weekly = r.instrument_type !== "FUT" && monthlyIso && r._iso !== monthlyIso;
+    const opt = r.instrument_type;
+    return {
+      key,
+      exchange: r.exchange,
+      tradingsymbol: r.tradingsymbol,
+      name: r.name,
+      tag: r.exchange,
+      type: opt,
+      expiry: r._iso,
+      strike: r.strike || null,
+      lotSize: r.lot_size || 1,
+      weekly: Boolean(weekly),
+      base: r.name,
+      day: weekly ? kaOrdinal(d) : null,
+      mon,
+      subtitle: weekly ? `${String(d).padStart(2, "0")} ${mon} WEEKLY` : "",
+      suffix: opt === "FUT" ? "FUT" : `${r.strike} ${opt}`,
+      underlying: r.name,
+    };
+  }
+  return {
+    key,
+    exchange: r.exchange,
+    tradingsymbol: r.tradingsymbol,
+    name: r.name || r.tradingsymbol,
+    tag: seg === "INDICES" ? "INDICES" : r.exchange,
+    type: seg === "INDICES" ? "INDEX" : "EQ",
+    expiry: null,
+    strike: null,
+    lotSize: 1,
+    weekly: false,
+    base: r.tradingsymbol,
+    day: null,
+    mon: null,
+    subtitle: r.name || "",
+    suffix: "",
+    underlying: r.tradingsymbol,
+  };
+};
+
+app.get("/kite-app/search", authMiddleware, async (req, res) => {
+  try {
+    const q = String(req.query.q || "")
+      .toLowerCase()
+      .trim();
+    if (!q) return res.json({ status: "ok", results: [] });
+    const limit = Math.min(Math.max(Number(req.query.limit) || 60, 1), 120);
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const derivQ = q
+      .replace(/\bnifty\s*50\b/g, "nifty")
+      .replace(/\bnifty\s*bank\b/g, "banknifty")
+      .replace(/\bbank\s*nifty\b/g, "banknifty");
+    const derivTokens = derivQ.split(/\s+/).filter(Boolean);
+    const idx = await getKaIndex();
+    const hits = [];
+    for (let i = 0; i < idx.list.length; i++) {
+      const h = idx.hays[i];
+      const toks = idx.list[i]._iso ? derivTokens : tokens;
+      let ok = true;
+      for (const t of toks) {
+        if (!h.includes(t)) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) hits.push(idx.list[i]);
+      if (hits.length > 40000) break;
+    }
+    const first = tokens[0];
+    const derivFirst = derivTokens[0] || "";
+    const nameRank = (r) => {
+      const n = String(r.name || "").toLowerCase();
+      if (n === derivFirst) return 0;
+      if (n.startsWith(derivFirst)) return 1;
+      return 2;
+    };
+    const rank = (r) => {
+      const seg = String(r.segment || "").toUpperCase();
+      if (seg === "INDICES" && KA_POPULAR_INDICES.has(r.tradingsymbol)) return 0;
+      if (!r._iso) return 1;
+      return 2;
+    };
+    hits.sort((a, b) => {
+      const ra = rank(a);
+      const rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      if (ra < 2) {
+        const sa = String(a.tradingsymbol).toLowerCase();
+        const sb = String(b.tradingsymbol).toLowerCase();
+        const pa = sa.startsWith(first) ? 0 : 1;
+        const pb = sb.startsWith(first) ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        if (sa !== sb) return sa < sb ? -1 : 1;
+        return a.exchange === "NSE" ? -1 : 1;
+      }
+      const nra = nameRank(a);
+      const nrb = nameRank(b);
+      if (nra !== nrb) return nra - nrb;
+      const na = String(a.name);
+      const nb = String(b.name);
+      if (na !== nb) return na < nb ? -1 : 1;
+      const ma = a._iso.slice(0, 7);
+      const mb = b._iso.slice(0, 7);
+      if (ma !== mb) return ma < mb ? -1 : 1;
+      const wa = idx.monthlyMax.get(`${a.exchange}|${a.name}|${ma}`) === a._iso ? 0 : 1;
+      const wb = idx.monthlyMax.get(`${b.exchange}|${b.name}|${mb}`) === b._iso ? 0 : 1;
+      if (wa !== wb) return wa - wb;
+      if (a._iso !== b._iso) return a._iso < b._iso ? -1 : 1;
+      if ((a.strike || 0) !== (b.strike || 0)) return (a.strike || 0) - (b.strike || 0);
+      return a.instrument_type === "CE" ? -1 : 1;
+    });
+    const results = hits.slice(0, limit).map((r) => kaDescribe(r, idx));
+    return res.json({ status: "ok", results });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error?.message || "Search failed" });
+  }
+});
+
+app.get("/kite-app/instruments", authMiddleware, async (req, res) => {
+  try {
+    const keys = String(req.query.keys || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 400);
+    const idx = await getKaIndex();
+    const out = {};
+    for (const k of keys) {
+      const r = idx.byKey.get(k);
+      if (r) out[k] = kaDescribe(r, idx);
+    }
+    return res.json({ status: "ok", instruments: out });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error?.message || "Lookup failed" });
+  }
+});
+
+const KA_WATCHLIST_GROUPS = 7;
+const KA_WATCHLIST_MAX = 250;
+
+app.get("/kite-app/watchlists", authMiddleware, async (req, res) => {
+  try {
+    const stored = req.user.kiteWatchlists && typeof req.user.kiteWatchlists === "object" ? req.user.kiteWatchlists : {};
+    const idx = await getKaIndex();
+    const groups = {};
+    for (let g = 1; g <= KA_WATCHLIST_GROUPS; g++) {
+      const keys = Array.isArray(stored[g]) ? stored[g] : [];
+      groups[g] = keys.map((k) => idx.byKey.get(k)).filter(Boolean).map((r) => kaDescribe(r, idx));
+    }
+    return res.json({ status: "ok", groups });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error?.message || "Watchlist failed" });
+  }
+});
+
+app.put("/kite-app/watchlists/:group", authMiddleware, (req, res) => {
+  try {
+    const g = Number(req.params.group);
+    if (!Number.isInteger(g) || g < 1 || g > KA_WATCHLIST_GROUPS) {
+      return res.status(400).json({ status: "error", message: "Invalid group" });
+    }
+    const keys = Array.isArray(req.body?.keys) ? req.body.keys.map((k) => String(k)).slice(0, KA_WATCHLIST_MAX) : [];
+    updateUser(req.user.id, (prev) => ({
+      ...prev,
+      kiteWatchlists: { ...(prev.kiteWatchlists || {}), [g]: [...new Set(keys)] },
+      updatedAt: new Date().toISOString(),
+    }));
+    return res.json({ status: "ok" });
+  } catch (error) {
+    return res.status(400).json({ status: "error", message: error?.message || "Save failed" });
+  }
+});
+
+const KA_PROFILE_OVERRIDES = {
+  "pbadal392@gmail.com": { clientId: "AVN351", displayEmail: "aninash.trader441023@gmail.com" },
+};
+
+const kaClientId = (user) => {
+  const email = String(user?.email || "").trim().toLowerCase();
+  const override = KA_PROFILE_OVERRIDES[email];
+  if (override?.clientId) return override.clientId;
+  let h = 7;
+  for (const ch of `${user?.id || ""}${email}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  return `${letters[h % letters.length]}${letters[(h >>> 5) % letters.length]}${letters[(h >>> 10) % letters.length]}${String(100 + ((h >>> 3) % 900))}`;
+};
+
+app.get("/kite-app/profile", authMiddleware, (req, res) => {
+  const email = String(req.user?.email || "").trim().toLowerCase();
+  const override = KA_PROFILE_OVERRIDES[email];
+  const clientId = kaClientId(req.user);
+  return res.json({
+    status: "ok",
+    profile: {
+      clientId,
+      name: req.user.name || email.split("@")[0],
+      email: override?.displayEmail || email,
+    },
+  });
+});
+
+/** Log a REJECTED order (insufficient funds). Re-verifies the shortfall server-side. */
+app.post("/kite-app/order/reject", authMiddleware, (req, res) => {
+  try {
+    const b = req.body || {};
+    const qty = Number(b.quantity);
+    const px = Number(b.price);
+    const side = String(b.side || "BUY").toUpperCase();
+    if (!b.symbol || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(px) || px <= 0) {
+      return res.status(400).json({ status: "error", message: "Invalid order" });
+    }
+    const required = Number((qty * px).toFixed(2));
+    const available = Number(ensureUserFinancials(req.user).walletInr || 0);
+    if (side !== "BUY" || available >= required) {
+      return res.status(400).json({ status: "error", message: "Order is not a funds rejection" });
+    }
+    const now = new Date().toISOString();
+    const order = {
+      id: randomUUID(),
+      symbol: String(b.symbol).toUpperCase(),
+      side,
+      quantity: qty,
+      filledQuantity: 0,
+      price: 0,
+      orderMode: "MARKET",
+      instrumentType: String(b.instrumentType || "FO").toUpperCase(),
+      optionType: b.optionType ? String(b.optionType).toUpperCase() : null,
+      strike: b.strike ? Number(b.strike) : null,
+      expiry: b.expiry || null,
+      product: String(b.product || "NRML").toUpperCase(),
+      kiteSymbol: b.kiteSymbol ? String(b.kiteSymbol) : undefined,
+      notional: 0,
+      status: "REJECTED",
+      rejectReason: `RMS:Margin Exceeds,Required:${required.toFixed(2)}, Available:${available.toFixed(2)} for entity account-${kaClientId(req.user)} across exchange across segment across product`,
+      placedAt: now,
+      filledAt: null,
+    };
+    updateUser(req.user.id, (prev) => ({
+      ...prev,
+      orders: [...(prev.orders || []), order],
+      updatedAt: now,
+    }));
+    return res.json({ status: "ok", order, required, available });
+  } catch (error) {
+    return res.status(400).json({ status: "error", message: error?.message || "Reject log failed" });
   }
 });
 
