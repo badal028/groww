@@ -59,7 +59,7 @@ export function BottomNav() {
       {items.map(({ to, label, Icon, dot }) => (
         <NavLink key={to} to={to} className={({ isActive }) => `bn-item${isActive ? " active" : ""}`}>
           <span className="bn-icon">
-            <Icon size={22} />
+            <Icon size={24} />
             {dot && <span className={`bn-dot ${dot}`} />}
           </span>
           <span className="bn-label">{label}</span>
