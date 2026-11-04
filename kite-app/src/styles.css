@@ -884,7 +884,7 @@ sup {
 
 /* ---------- order screen ---------- */
 .order-screen {
-  background: var(--bg-3);
+  background: #ebecee;
 }
 .order-screen.buy {
   --accent: var(--blue);
@@ -895,99 +895,116 @@ sup {
 .os-head {
   display: flex;
   align-items: center;
-  height: 50px;
-  padding: 0 4px;
-  background: #fff;
+  height: 54px;
+  padding: 0 6px 0 8px;
   flex-shrink: 0;
 }
 .os-title {
   flex: 1;
   min-width: 0;
-  font-size: 17.5px;
-  color: var(--text-dark);
+  font-size: 18px;
+  color: var(--text);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: clip;
-  padding-left: 4px;
+  padding-left: 8px;
 }
 .os-strip {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
-  padding: 7px 16px;
-  margin: 0 8px;
-  background: #f1f1f1;
-  font-size: 13px;
-  border-radius: 2px;
+  padding: 10px 16px 10px 36px;
+  margin: 0 14px;
+  background: #f5f4f9;
+  color: #98979c;
+  font-size: 12px;
   flex-shrink: 0;
 }
-.order-screen .os-head + .os-strip {
-  margin-top: 0;
-}
 .os-body {
+  position: relative;
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.os-body::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 116px;
+  min-height: calc(100% - 116px);
+  bottom: 0;
+  background: #fff;
+  border-radius: 14px 14px 0 0;
+  z-index: 0;
+}
+.os-body > * {
+  position: relative;
+  z-index: 1;
 }
 .os-tabs {
   display: flex;
-  gap: 4px;
-  padding: 8px 8px 0;
-  background: #fff;
-  margin: 8px 8px 0;
+  gap: 14px;
+  padding: 14px 14px 0;
+  flex-shrink: 0;
 }
 .os-tab {
-  padding: 4px 8px 8px;
-  font-size: 14px;
-  color: var(--light);
+  padding: 8px 10px 12px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #a6a6a6;
   position: relative;
+  border-radius: 3px;
+  background: #e8ebed;
 }
 .os-tab.active {
   color: var(--accent);
-  font-weight: 600;
 }
 .os-tab.active::after {
   content: "";
   position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 0;
+  left: 10px;
+  width: 24px;
+  bottom: 2px;
   height: 2px;
+  border-radius: 2px;
   background: var(--accent);
 }
 .os-card {
   background: #fff;
-  margin: 0 8px 8px;
-  padding: 12px 10px 12px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03);
-}
-.os-tabs + .os-card {
-  border-top: 1px solid var(--border);
+  margin: 12px 14px 0;
+  padding: 16px 16px 0;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  flex-shrink: 0;
 }
 .os-label-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 4px 0 6px;
+  margin: 2px 0 12px;
 }
 .os-label {
-  font-size: 14px;
+  font-size: 14.5px;
   font-weight: 600;
-  color: var(--text-dark);
+  color: var(--text);
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 .os-lots {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--light);
 }
 .os-input-row {
   display: flex;
-  border: 1px solid #ddd;
+  border: 1px solid #ececec;
   border-radius: 3px;
-  height: 42px;
-  margin-bottom: 10px;
+  height: 52px;
+  margin-bottom: 18px;
   overflow: hidden;
 }
 .os-input {
@@ -996,7 +1013,7 @@ sup {
   border: 0;
   outline: none;
   padding: 0 10px;
-  font-size: 15.5px;
+  font-size: 17px;
   color: var(--text);
   background: #fff;
 }
@@ -1004,88 +1021,84 @@ sup {
   border-color: var(--accent);
 }
 .os-input.hatched {
-  color: var(--light);
-  background: repeating-linear-gradient(-45deg, #fafafa, #fafafa 4px, #f0f0f0 4px, #f0f0f0 5px);
+  color: #b5b5b5;
+  background: repeating-linear-gradient(-45deg, #fafafa, #fafafa 5px, #ededed 5px, #ededed 6px);
 }
 .os-swap {
-  width: 42px;
-  border-left: 1px solid #ddd;
+  width: 54px;
+  border-left: 1px solid #ececec;
   color: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
+  background: #fff;
 }
 .os-radios {
   display: flex;
   justify-content: flex-end;
-  gap: 18px;
-  padding: 4px 2px 2px;
+  gap: 26px;
+  margin: 6px -16px 0;
+  padding: 13px 16px;
+  background: #fafafa;
 }
 .radio {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13.5px;
+  gap: 8px;
+  font-size: 14.5px;
   color: var(--text);
   cursor: pointer;
 }
 .radio-dot {
-  width: 14px;
-  height: 14px;
+  width: 17px;
+  height: 17px;
   border-radius: 50%;
-  border: 1.5px solid #ccc;
-  position: relative;
+  border: 1px solid #d4d4d4;
+  background: #ececec;
+  box-sizing: border-box;
 }
 .radio-dot.on {
-  border-color: var(--accent);
-}
-.radio-dot.on::after {
-  content: "";
-  position: absolute;
-  inset: 2px;
-  border-radius: 50%;
-  background: var(--accent);
+  border: 5px solid var(--accent);
+  background: #fff;
 }
 .os-hint {
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--light);
-  margin-top: -4px;
+  margin: -8px 0 14px;
 }
 .os-more {
   display: flex;
   flex-direction: column;
   align-items: center;
-  font-size: 13.5px;
+  font-size: 14.5px;
   color: var(--text);
-  padding: 8px 0 20px;
+  padding: 26px 0 20px;
 }
 .os-foot {
   flex-shrink: 0;
-  background: var(--bg-3);
+  background: #fff;
   padding-bottom: env(safe-area-inset-bottom);
 }
 .os-margin {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12.5px;
-  color: var(--light);
-  padding: 4px 6px 4px 12px;
-  background: #fff;
-  border-top: 1px solid var(--border);
-}
-.os-margin > span:first-child {
-  flex: 0 0 auto;
+  gap: 18px;
+  height: 42px;
+  font-size: 13px;
+  color: #666;
+  padding: 0 10px 0 16px;
+  background: #f3f3f5;
+  white-space: nowrap;
 }
 .os-margin .icon-btn {
   margin-left: auto;
-  color: var(--text);
+  color: #555;
 }
 .os-swipe-row {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px 16px 46px;
+  justify-content: center;
+  padding: 14px 0 18px;
   background: #fff;
 }
 .os-lotrow {
@@ -1115,15 +1128,15 @@ sup {
 /* ---------- swipe button ---------- */
 .swipe {
   position: relative;
-  flex: 1;
-  height: 54px;
-  border-radius: 27px;
+  flex: 0 0 67%;
+  height: 64px;
+  border-radius: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   user-select: none;
   touch-action: none;
-  transition: width 0.25s, flex 0.25s;
+  transition: flex-basis 0.25s;
 }
 .swipe.buy {
   background: var(--blue);
@@ -1132,22 +1145,22 @@ sup {
   background: var(--red);
 }
 .swipe.loading {
-  flex: 0 0 54px;
-  margin: 0 auto;
+  flex: 0 0 64px;
 }
 .swipe-label {
-  color: #fff;
-  font-size: 12.5px;
-  letter-spacing: 1px;
-  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 13px;
+  letter-spacing: 1.6px;
+  font-weight: 500;
+  padding-left: 36px;
   pointer-events: none;
 }
 .swipe-knob {
   position: absolute;
   left: 3px;
   top: 3px;
-  width: 48px;
-  height: 48px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
   background: #fff;
   display: flex;

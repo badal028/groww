@@ -150,8 +150,13 @@ const augmentContestForApi = (contest) => {
 
 const hiddenLeaderboardUserSet = () => new Set((getSiteSettings().leaderboardHiddenUserIds || []).map((x) => String(x)));
 
+/** Demo accounts with the full legacy privilege set (wallet, clear, market-hours bypass, invite). */
+const PRIVILEGED_DEMO_EMAILS = ["badal@gmail.com", "b@gmail.com"];
+
 /** Hard-exclude these emails from prize + practice leaderboards (not only admin-hidden IDs). */
-const LEADERBOARD_EXCLUDED_EMAILS = new Set(["badal@gmail.com", "badal1@gmail.com"].map((e) => e.trim().toLowerCase()));
+const LEADERBOARD_EXCLUDED_EMAILS = new Set(
+  [...PRIVILEGED_DEMO_EMAILS, "badal1@gmail.com"].map((e) => e.trim().toLowerCase()),
+);
 
 const isLeaderboardParticipantUser = (u) => {
   if (!u) return false;
@@ -162,7 +167,7 @@ const isLeaderboardParticipantUser = (u) => {
 };
 
 const VIRTUAL_WALLET_CONTROL_EMAILS = new Set(
-  ["badal@gmail.com", String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase()].map((e) =>
+  [...PRIVILEGED_DEMO_EMAILS, String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase()].map((e) =>
     e.trim().toLowerCase(),
   ),
 );
@@ -716,7 +721,7 @@ const defaultWalletBalance = Number(process.env.DEFAULT_VIRTUAL_BALANCE_INR || 1
 /** 10 crore virtual paper wallet for privileged demo accounts (INR). */
 const MEGA_VIRTUAL_BALANCE_INR = 100_000_000;
 const megaVirtualEmails = new Set(
-  ["badal@gmail.com", String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase()].map((e) =>
+  [...PRIVILEGED_DEMO_EMAILS, String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim().toLowerCase()].map((e) =>
     e.toLowerCase(),
   ),
 );
@@ -735,7 +740,7 @@ const adminEmail = String(process.env.ADMIN_EMAIL || "pbadal392@gmail.com").trim
 const ACCESS_CLOSED_MESSAGE =
   "Access is invite-only. Kindly contact @optixadmin on Telegram for access.";
 const ACCESS_ALLOWED_EMAILS = new Set(
-  ["badal@gmail.com", adminEmail].map((e) => String(e || "").trim().toLowerCase()).filter(Boolean),
+  [...PRIVILEGED_DEMO_EMAILS, adminEmail].map((e) => String(e || "").trim().toLowerCase()).filter(Boolean),
 );
 const isAccessAllowedEmail = (email) => ACCESS_ALLOWED_EMAILS.has(String(email || "").trim().toLowerCase());
 
@@ -753,7 +758,7 @@ const canLoginEmail = (email) => {
   return Boolean(getUserByEmail(e));
 };
 
-const marketHoursBypassEmails = new Set(["badal@gmail.com"]);
+const marketHoursBypassEmails = new Set(PRIVILEGED_DEMO_EMAILS);
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;

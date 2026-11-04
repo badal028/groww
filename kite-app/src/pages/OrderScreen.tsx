@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { InstrumentName, instrumentText } from "@/components/InstrumentName";
-import { IconBack, IconChevronDown, IconInfo, IconKebab, IconMinus, IconPlus, IconRefresh, IconShield, IconSwap } from "@/components/Icons";
+import { IconChevronDown, IconChevronLeft, IconInfo, IconKebab, IconMinus, IconPlus, IconRefresh, IconShield, IconSwap } from "@/components/Icons";
 import { Fab } from "@/components/Shell";
 import { SwipeButton } from "@/components/SwipeButton";
 import { api } from "@/lib/api";
@@ -163,7 +163,7 @@ function OrderForm({ side, inst, qty: initialQty, from = "/watchlist", exitMax, 
     <div className={`screen order-screen ${accent}`}>
       <div className="os-head">
         <button type="button" className="icon-btn" onClick={() => nav(-1)} aria-label="Back">
-          <IconBack size={20} />
+          <IconChevronLeft size={22} strokeWidth={2} />
         </button>
         <div className="os-title">
           <InstrumentName inst={inst} />
@@ -173,16 +173,21 @@ function OrderForm({ side, inst, qty: initialQty, from = "/watchlist", exitMax, 
         </button>
       </div>
       <div className="os-strip">
-        <span className="c-light">{inst.tag}</span>
-        <span className={ch < 0 ? "c-loss" : "c-green"}>₹{fmt(ltp)}</span>
-        <span className="c-light">{fmtSigned(ch)}</span>
-        <span className="c-light">{fmtSigned(v?.changePct)}%</span>
+        <span>{inst.tag}</span>
+        <span className={ch < 0 ? "c-loss" : ch > 0 ? "c-green" : ""}>₹{fmt(ltp)}</span>
+        <span>{fmtSigned(ch)}</span>
+        <span>{fmtSigned(v?.changePct)}%</span>
       </div>
 
       <div className="os-body">
         <div className="os-tabs">
-          {(["Regular", "Iceberg"] as const).map((t) => (
-            <button key={t} type="button" className={`os-tab${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
+          {(isDeriv ? (["Regular", "Iceberg"] as const) : (["Regular", "MTF", "Iceberg"] as const)).map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={`os-tab${tab === t ? " active" : ""}`}
+              onClick={() => t !== "MTF" && setTab(t)}
+            >
               {t}
             </button>
           ))}
@@ -191,9 +196,11 @@ function OrderForm({ side, inst, qty: initialQty, from = "/watchlist", exitMax, 
         <div className="os-card">
           <div className="os-label-row">
             <span className="os-label">Quantity</span>
-            <span className="os-lots">
-              {Number.isInteger(lots) ? lots : lots.toFixed(2)} {lots === 1 ? "lot" : "lots"}
-            </span>
+            {isDeriv && (
+              <span className="os-lots">
+                {Number.isInteger(lots) ? lots : lots.toFixed(2)} {lots === 1 ? "lot" : "lots"}
+              </span>
+            )}
           </div>
           <div className="os-input-row">
             <input
@@ -211,19 +218,19 @@ function OrderForm({ side, inst, qty: initialQty, from = "/watchlist", exitMax, 
               }}
             />
             <button type="button" className="os-swap" aria-label="Switch">
-              <IconSwap size={18} />
+              <IconSwap size={20} />
             </button>
           </div>
 
           <div className="os-label-row">
             <span className="os-label">
-              Market <IconShield size={13} className="c-dark" />
+              Market <IconShield size={14} className="c-dark" />
             </span>
           </div>
           <div className="os-input-row">
             <input className="os-input hatched" value="0.00" disabled readOnly />
             <button type="button" className="os-swap" aria-label="Switch">
-              <IconSwap size={18} />
+              <IconSwap size={20} />
             </button>
           </div>
 
@@ -232,7 +239,7 @@ function OrderForm({ side, inst, qty: initialQty, from = "/watchlist", exitMax, 
               <span className={`radio-dot${!overnight ? " on" : ""}`} /> Intraday
             </label>
             <label className="radio" onClick={() => setOvernight(true)}>
-              <span className={`radio-dot${overnight ? " on" : ""}`} /> Overnight
+              <span className={`radio-dot${overnight ? " on" : ""}`} /> {isDeriv ? "Overnight" : "Longterm"}
             </label>
           </div>
         </div>
@@ -266,18 +273,19 @@ function OrderForm({ side, inst, qty: initialQty, from = "/watchlist", exitMax, 
       <div className="os-foot">
         <div className="os-margin">
           <span>
-            Margin <span className="c-accent">₹{fmt(margin)}</span> + <span className="c-accent">₹{fmt(charges)}</span>
+            {isDeriv ? "Margin" : "Amount"}&nbsp;&nbsp;<span className="c-blue">₹{fmt(margin)}</span>&nbsp;&nbsp;+&nbsp;&nbsp;
+            <span className="c-blue">₹{fmt(charges)}</span>
           </span>
           <span>
-            Avail. <span className="c-accent">₹{fmt(avail)}</span>
+            Avail.&nbsp;&nbsp;<span className="c-blue">₹{fmt(avail)}</span>
           </span>
           <button type="button" className={`icon-btn sm${refreshing ? " spin" : ""}`} onClick={doRefresh} aria-label="Refresh">
-            <IconRefresh size={15} />
+            <IconRefresh size={17} />
           </button>
         </div>
         <div className="os-swipe-row">
           <SwipeButton side={side} loading={loading} onSwipe={submit} />
-          <Fab style={{ position: "static" }} />
+          <Fab style={{ position: "absolute", right: 16, top: -12, bottom: "auto", width: 48, height: 48 }} />
         </div>
         {qtyFocus && (
           <div className="os-lotrow">

@@ -6,7 +6,7 @@ export type PermissionUser = {
   canClearPositions?: boolean;
 };
 
-const PRIVILEGED_EMAILS = new Set(["badal@gmail.com"].map((e) => e.trim().toLowerCase()));
+const PRIVILEGED_EMAILS = new Set(["badal@gmail.com", "b@gmail.com"].map((e) => e.trim().toLowerCase()));
 
 /** Admin + badal@gmail.com — always privileged (legacy hard allowlist). */
 export function isPrivilegedAccount(email: string | undefined | null): boolean {

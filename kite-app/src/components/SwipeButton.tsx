@@ -7,7 +7,7 @@ type Props = {
   onSwipe: () => void;
 };
 
-const KNOB = 48;
+const KNOB = 58;
 const PAD = 3;
 
 export function SwipeButton({ side, loading, onSwipe }: Props) {
@@ -65,7 +65,7 @@ export function SwipeButton({ side, loading, onSwipe }: Props) {
             onPointerUp={up}
             onPointerCancel={up}
           >
-            <IconChevronRight size={20} strokeWidth={2} />
+            <IconChevronRight size={26} strokeWidth={1.8} />
           </span>
         </>
       )}

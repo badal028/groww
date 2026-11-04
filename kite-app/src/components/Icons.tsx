@@ -82,6 +82,12 @@ export const IconChevronRight = ({ size, ...r }: P) => (
   </svg>
 );
 
+export const IconChevronLeft = ({ size, ...r }: P) => (
+  <svg {...base(size, r)}>
+    <path d="M15 5.5L8.5 12l6.5 6.5" />
+  </svg>
+);
+
 export const IconBack = ({ size, ...r }: P) => (
   <svg {...base(size, r)}>
     <path d="M19 12H5.5M11 6l-6 6 6 6" />

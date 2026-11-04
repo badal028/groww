@@ -40,7 +40,7 @@ function defaultFoLotSize(contract: FoContract | null): number {
 type TouchMode = "rise" | "fall" | "flat" | null;
 
 const TOUCH_EPS = 0.02;
-const MARKET_HOURS_BYPASS_EMAILS = new Set(["badal@gmail.com"]);
+const MARKET_HOURS_BYPASS_EMAILS = new Set(["badal@gmail.com", "b@gmail.com"]);
 
 export default function FoTradeModal({ open, onOpenChange, contract, openWithSide }: Props) {
   const [isDesktop, setIsDesktop] = useState<boolean>(() =>
