@@ -293,16 +293,15 @@ export default function FoTradeModal({ open, onOpenChange, contract, openWithSid
     const ltpNow = ltpRef.current;
 
     // Limit-order behavior:
-    // BUY: only execute immediately if limit >= current LTP (marketable)
-    // SELL: only execute immediately if limit <= current LTP (marketable)
-    // Otherwise keep waiting for touch/cross via the auto-trigger effect.
+    // BUY: always fills immediately at the typed price (above or below LTP); P&L runs live vs that avg.
+    // SELL: only execute immediately if limit <= current LTP (marketable),
+    // otherwise keep waiting for touch/cross via the auto-trigger effect.
     if (hasLimit) {
       if (!Number.isFinite(limitPx) || limitPx <= 0) {
         toast.error("Invalid limit price");
         return false;
       }
-      const marketable =
-        side === "BUY" ? limitPx >= ltpNow - TOUCH_EPS : limitPx <= ltpNow + TOUCH_EPS;
+      const marketable = side === "BUY" || limitPx <= ltpNow + TOUCH_EPS;
       if (!marketable) {
         if (side === "SELL") {
           const ks = contract.kiteSymbol?.trim();
@@ -403,7 +402,7 @@ export default function FoTradeModal({ open, onOpenChange, contract, openWithSid
   useEffect(() => {
     if (!open || !contract || placing || isExpired || !qtyValid) return;
     if (priceField.trim() === "") return;
-    if (side === "BUY" && insufficientBuy) return;
+    if (side === "BUY") return;
 
     const mode = touchModeRef.current;
     if (mode === null || mode === "flat") return;

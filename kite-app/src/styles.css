@@ -1021,8 +1021,12 @@ sup {
   border-color: var(--accent);
 }
 .os-input.hatched {
-  color: #b5b5b5;
+  color: var(--text);
   background: repeating-linear-gradient(-45deg, #fafafa, #fafafa 5px, #ededed 5px, #ededed 6px);
+}
+.os-input.hatched::placeholder {
+  color: #b5b5b5;
+  opacity: 1;
 }
 .os-swap {
   width: 54px;

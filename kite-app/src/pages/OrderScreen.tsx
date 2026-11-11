@@ -29,6 +29,7 @@ function OrderForm({ side, inst, qty: initialQty, from = "/watchlist", exitMax, 
   const [legs, setLegs] = useState("2");
   const [overnight, setOvernight] = useState(true);
   const [qtyFocus, setQtyFocus] = useState(false);
+  const [mktStr, setMktStr] = useState("");
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const qtyRef = useRef<HTMLInputElement>(null);
@@ -41,7 +42,8 @@ function OrderForm({ side, inst, qty: initialQty, from = "/watchlist", exitMax, 
   const lots = qty / lot;
   const isDeriv = Boolean(inst.expiry);
   const sell = side === "SELL";
-  const turnover = qty * ltp;
+  const typedPx = !sell && Number(mktStr) > 0 ? Number(mktStr) : null;
+  const turnover = qty * (typedPx ?? ltp);
   const margin = sell ? 0 : turnover;
   const charges = estimateCharges(inst.exchange, inst.type, side, turnover);
   const avail = user?.walletInr ?? 0;
@@ -113,7 +115,7 @@ function OrderForm({ side, inst, qty: initialQty, from = "/watchlist", exitMax, 
     qtyRef.current?.blur();
     if (!qty || qty <= 0) return fail("Quantity should be greater than 0.");
     if (qty % lot !== 0) return fail(`Quantity should be a multiple of lot size (${lot}).`);
-    const price = Number((getQuote(inst.key)?.last || ltp).toFixed(2));
+    const price = Number((typedPx ?? (getQuote(inst.key)?.last || ltp)).toFixed(2));
     if (!price || price <= 0) return fail("Price is not available for this instrument right now.");
     const body = orderBody(price);
 
@@ -228,7 +230,19 @@ function OrderForm({ side, inst, qty: initialQty, from = "/watchlist", exitMax, 
             </span>
           </div>
           <div className="os-input-row">
-            <input className="os-input hatched" value="0.00" disabled readOnly />
+            <input
+              className="os-input hatched"
+              placeholder="0.00"
+              inputMode="decimal"
+              value={sell ? "" : mktStr}
+              disabled={sell}
+              readOnly={sell}
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^0-9.]/g, "");
+                const [i, d] = v.split(".");
+                setMktStr(d !== undefined ? `${i.slice(0, 7)}.${d.slice(0, 2)}` : i.slice(0, 7));
+              }}
+            />
             <button type="button" className="os-swap" aria-label="Switch">
               <IconSwap size={20} />
             </button>
