@@ -105,7 +105,14 @@ export function InstrumentSheet({ inst, open, onClose, position }: Props) {
           </div>
 
           <div className="is-links">
-            <button type="button" className="lnk">
+            <button
+              type="button"
+              className="lnk"
+              onClick={() => {
+                onClose();
+                nav("/chart", { state: { inst, position: position ?? null, from: position ? "/portfolio" : "/watchlist" } });
+              }}
+            >
               <IconChart size={16} /> View chart
             </button>
             {isDeriv && (

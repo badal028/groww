@@ -3703,6 +3703,44 @@ app.get("/kite-app/instruments", authMiddleware, async (req, res) => {
   }
 });
 
+/** Kite interval -> how many calendar days of history to request (stays within Kite's per-call limits). */
+const KA_CANDLE_DAYS = {
+  minute: 3,
+  "3minute": 7,
+  "5minute": 10,
+  "15minute": 25,
+  "30minute": 45,
+  "60minute": 90,
+  day: 730,
+};
+
+app.get("/kite-app/candles", authMiddleware, ensureAuth, async (req, res) => {
+  try {
+    const key = String(req.query.key || "").trim();
+    const interval = String(req.query.interval || "5minute");
+    if (!key || !KA_CANDLE_DAYS[interval]) {
+      return res.status(400).json({ status: "error", message: "key and a valid interval are required" });
+    }
+    const idx = await getKaIndex();
+    const row = idx.byKey.get(key);
+    if (!row?.instrument_token) return res.status(404).json({ status: "error", message: "Instrument not found" });
+    const to = new Date();
+    const from = new Date(to.getTime() - KA_CANDLE_DAYS[interval] * 864e5);
+    const rows = await kite.getHistoricalData(row.instrument_token, interval, from, to);
+    const candles = (Array.isArray(rows) ? rows : []).map((c) => ({
+      t: Math.floor(new Date(c.date).getTime() / 1000),
+      o: Number(c.open),
+      h: Number(c.high),
+      l: Number(c.low),
+      c: Number(c.close),
+      v: Number(c.volume || 0),
+    }));
+    return res.json({ status: "ok", candles });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error?.message || "Candles failed" });
+  }
+});
+
 const KA_WATCHLIST_GROUPS = 7;
 const KA_WATCHLIST_MAX = 250;
 

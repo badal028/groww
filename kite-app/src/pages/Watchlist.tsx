@@ -4,13 +4,14 @@ import { InstrumentName } from "@/components/InstrumentName";
 import { InstrumentSheet } from "@/components/InstrumentSheet";
 import { IconChevronDown, IconGroupSettings, IconPlus, IconSearch, IconSliders } from "@/components/Icons";
 import { Fab, IndexStrip } from "@/components/Shell";
+import { SwipeDelete } from "@/components/SwipeDelete";
 import { useLiveQuotes } from "@/lib/market";
 import { fmt, fmtSigned } from "@/lib/format";
 import type { Instrument } from "@/lib/types";
 import { useApp } from "@/state/AppContext";
 
 export default function Watchlist() {
-  const { groups, activeGroup, setActiveGroup } = useApp();
+  const { groups, activeGroup, setActiveGroup, removeFromWatchlist } = useApp();
   const nav = useNavigate();
   const list = groups[activeGroup] || [];
   const keys = useMemo(() => list.map((i) => i.key), [list]);
@@ -57,8 +58,8 @@ export default function Watchlist() {
           const v = q(inst.key);
           const ch = v?.change ?? 0;
           return (
+            <SwipeDelete key={inst.key} onDelete={() => removeFromWatchlist(inst.key)}>
             <div
-              key={inst.key}
               className="wl-row"
               onClick={() => {
                 setSel(inst);
@@ -78,6 +79,7 @@ export default function Watchlist() {
                 </div>
               </div>
             </div>
+            </SwipeDelete>
           );
         })}
         {list.length === 0 && (

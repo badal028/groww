@@ -291,6 +291,27 @@ sup {
   display: flex;
   justify-content: center;
   color: var(--text);
+  transition: transform 0.2s;
+}
+.ix-chev.open {
+  transform: rotate(180deg);
+}
+.index-strip-wrap {
+  flex-shrink: 0;
+}
+.index-strip-wrap .index-strip:has(+ .second) {
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+.index-strip.second {
+  padding-top: 4px;
+}
+.index-strip.second .ix:first-child {
+  flex: 1;
+  max-width: none;
+}
+.ix {
+  cursor: pointer;
 }
 
 /* ---------- bottom nav ---------- */
@@ -1799,4 +1820,155 @@ sup {
   background: #fff;
   color: var(--blue);
   border: 1px solid var(--blue);
+}
+
+/* ---------- swipe to delete (watchlist) ---------- */
+.swipe-del {
+  position: relative;
+  overflow: hidden;
+  max-height: 120px;
+  transition: max-height 0.2s ease-out;
+}
+.swipe-del.removing {
+  max-height: 0;
+}
+.sd-panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  background: var(--red);
+}
+.sd-btn {
+  width: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: #fff;
+  font-size: 12px;
+}
+.sd-front {
+  position: relative;
+  background: #fff;
+  transition: transform 0.2s ease-out;
+  touch-action: pan-y;
+}
+.sd-front.dragging {
+  transition: none;
+}
+
+/* ---------- chart ---------- */
+.chart-screen {
+  background: #fff;
+}
+.ch-head {
+  display: flex;
+  align-items: center;
+  height: 56px;
+  padding: 0 8px 0 6px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ch-title {
+  min-width: 0;
+  padding-left: 4px;
+}
+.ch-name {
+  font-size: 15.5px;
+  color: var(--text-dark);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ch-sub {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--light);
+}
+.ch-intervals {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+.ch-iv {
+  min-width: 40px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #131722;
+}
+.ch-iv.active {
+  background: #e3effd;
+  color: #2962ff;
+}
+.ch-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.ch-canvas {
+  position: absolute;
+  inset: 0;
+}
+.ch-legend {
+  position: absolute;
+  top: 6px;
+  left: 10px;
+  right: 70px;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: 11.5px;
+  color: #131722;
+  pointer-events: none;
+}
+.ch-legend b {
+  font-weight: 500;
+}
+.ch-legend .up {
+  color: #26a69a;
+}
+.ch-legend .down {
+  color: #ef5350;
+}
+.ch-lg-sym {
+  font-weight: 600;
+  width: 100%;
+}
+.ch-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4;
+  background: rgba(255, 255, 255, 0.6);
+}
+.ch-note {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 40px;
+  z-index: 4;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #666;
+  background: #fff8e1;
+  border-radius: 4px;
+  text-align: center;
+}
+.ch-actions {
+  display: flex;
+  gap: 20px;
+  padding: 12px 30px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }

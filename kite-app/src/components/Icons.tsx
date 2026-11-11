@@ -324,6 +324,12 @@ export const IconPnl = ({ size, ...r }: P) => (
   </svg>
 );
 
+export const IconTrash = ({ size, ...r }: P) => (
+  <svg {...base(size, r)}>
+    <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 13h9l1-13M10 11v6M14 11v6" />
+  </svg>
+);
+
 export const IconClose = ({ size, ...r }: P) => (
   <svg {...base(size, r)}>
     <path d="M6 6l12 12M18 6L6 18" />

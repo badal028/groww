@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom
 import { BottomNav, Toasts } from "@/components/Shell";
 import { AppProvider, useApp } from "@/state/AppContext";
 import Bids from "@/pages/Bids";
+import ChartScreen from "@/pages/ChartScreen";
 import Completed from "@/pages/Completed";
 import Login from "@/pages/Login";
 import OrderScreen from "@/pages/OrderScreen";
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="/search" element={<Guard><Search /></Guard>} />
             <Route path="/order/:side" element={<Guard><OrderScreen /></Guard>} />
             <Route path="/completed" element={<Guard><Completed /></Guard>} />
+            <Route path="/chart" element={<Guard><ChartScreen /></Guard>} />
             <Route path="*" element={<Navigate to="/watchlist" replace />} />
           </Routes>
           <Toasts />

@@ -1,6 +1,8 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { NavLink } from "react-router-dom";
+import { NIFTY_50, NIFTY_BANK, SENSEX } from "@/lib/indices";
 import { useLiveQuotes } from "@/lib/market";
+import type { Instrument } from "@/lib/types";
 import { fmt, fmtSigned } from "@/lib/format";
 import { useApp } from "@/state/AppContext";
 import {
@@ -13,34 +15,60 @@ import {
   IconUser,
 } from "./Icons";
 
-const INDICES = [
-  { key: "NSE:NIFTY 50", label: "NIFTY 50" },
-  { key: "NSE:NIFTY BANK", label: "NIFTY BANK" },
-];
-const INDEX_KEYS = INDICES.map((i) => i.key);
+const INDEX_KEYS = [NIFTY_50.key, NIFTY_BANK.key, SENSEX.key];
+
+function IndexCell({ inst, q, onAdd }: { inst: Instrument; q: ReturnType<typeof useLiveQuotes>; onAdd: (i: Instrument) => void }) {
+  const v = q(inst.key);
+  const ch = v?.change ?? 0;
+  return (
+    <div className="ix" role="button" tabIndex={0} onClick={() => onAdd(inst)}>
+      <div className="ix-name">{inst.base}</div>
+      <div className="ix-vals">
+        <span className={ch < 0 ? "c-loss" : "c-green"}>{fmt(v?.last)}</span>
+        <span className="ix-ch">
+          {fmtSigned(ch)} ({fmtSigned(v?.changePct)}%)
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export function IndexStrip() {
   const q = useLiveQuotes(INDEX_KEYS);
+  const { groups, activeGroup, addToWatchlist, toast } = useApp();
+  const [expanded, setExpanded] = useState(() => sessionStorage.getItem("pro_ix_open") === "1");
+
+  const toggle = () => {
+    setExpanded((e) => {
+      sessionStorage.setItem("pro_ix_open", e ? "0" : "1");
+      return !e;
+    });
+  };
+
+  const onAdd = (inst: Instrument) => {
+    const list = groups[activeGroup] || [];
+    if (list.some((i) => i.key === inst.key)) {
+      toast("Already in watchlist");
+      return;
+    }
+    addToWatchlist(inst);
+    toast("Added to watchlist");
+  };
+
   return (
-    <div className="index-strip">
-      {INDICES.map((ix) => {
-        const v = q(ix.key);
-        const ch = v?.change ?? 0;
-        return (
-          <div key={ix.key} className="ix">
-            <div className="ix-name">{ix.label}</div>
-            <div className="ix-vals">
-              <span className={ch < 0 ? "c-loss" : "c-green"}>{fmt(v?.last)}</span>
-              <span className="ix-ch">
-                {fmtSigned(ch)} ({fmtSigned(v?.changePct)}%)
-              </span>
-            </div>
-          </div>
-        );
-      })}
-      <button type="button" className="ix-chev" aria-label="Market overview">
-        <IconChevronDown size={22} />
-      </button>
+    <div className="index-strip-wrap">
+      <div className="index-strip">
+        <IndexCell inst={NIFTY_50} q={q} onAdd={onAdd} />
+        <IndexCell inst={NIFTY_BANK} q={q} onAdd={onAdd} />
+        <button type="button" className={`ix-chev${expanded ? " open" : ""}`} aria-label="Market overview" onClick={toggle}>
+          <IconChevronDown size={22} />
+        </button>
+      </div>
+      {expanded && (
+        <div className="index-strip second">
+          <IndexCell inst={SENSEX} q={q} onAdd={onAdd} />
+        </div>
+      )}
     </div>
   );
 }
