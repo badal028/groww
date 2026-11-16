@@ -151,7 +151,7 @@ const augmentContestForApi = (contest) => {
 const hiddenLeaderboardUserSet = () => new Set((getSiteSettings().leaderboardHiddenUserIds || []).map((x) => String(x)));
 
 /** Demo accounts with the full legacy privilege set (wallet, clear, market-hours bypass, invite). */
-const PRIVILEGED_DEMO_EMAILS = ["badal@gmail.com", "b@gmail.com"];
+const PRIVILEGED_DEMO_EMAILS = ["badal@gmail.com", "b@gmail.com", "akshit@gmail.com"];
 
 /** Hard-exclude these emails from prize + practice leaderboards (not only admin-hidden IDs). */
 const LEADERBOARD_EXCLUDED_EMAILS = new Set(
