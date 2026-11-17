@@ -3048,7 +3048,7 @@ app.post("/paper/position/close", authMiddleware, (req, res) => {
   }
 });
 
-/** Remove an exited position from the list (hard allowlist OR admin toggle canClearPositions). */
+/** Remove one position from the list — open or exited (hard allowlist OR admin toggle canClearPositions). */
 app.post("/paper/position/dismiss", authMiddleware, (req, res) => {
   try {
     if (!canUserClearPositions(req.user)) {
@@ -3064,8 +3064,7 @@ app.post("/paper/position/dismiss", authMiddleware, (req, res) => {
       const idx = positions.findIndex((p) => p.instrumentKey === instrumentKey);
       if (idx === -1) throw new Error("Position not found");
       const pos = positions[idx];
-      if (!pos?.exited) throw new Error("Exit the position before clearing it from the list");
-      const lineRealized = Number(pos.realizedPnlInr || 0);
+      const lineRealized = pos?.exited ? Number(pos.realizedPnlInr || 0) : 0;
       lineRealizedOut = lineRealized;
       const next = positions.filter((_, i) => i !== idx);
       const prevRealized = Number(prev.realizedPnlInr || 0);

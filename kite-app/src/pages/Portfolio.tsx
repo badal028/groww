@@ -168,6 +168,7 @@ export default function Portfolio() {
                 <SwipeClear
                   key={p.instrumentKey}
                   onClear={p.exited && canClear ? () => void clearPosition(p) : undefined}
+                  onClearLeft={canClear ? () => void clearPosition(p) : undefined}
                   busy={clearing === p.instrumentKey}
                 >
                   <div
